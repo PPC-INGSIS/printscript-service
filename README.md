@@ -46,6 +46,40 @@ curl localhost:8082/actuator/health
 
 El `8082` está reservado en el repo de infraestructura para no chocar con los otros servicios cuando corren todos en la misma máquina.
 
+## Endpoints
+
+### `POST /validate?version={id}`
+
+Valida código que todavía no está guardado (crear o editar un snippet). Recibe el contenido, no una ruta.
+
+```bash
+curl -X POST "localhost:8082/validate?version=1.1" \
+  -H "Content-Type: text/plain" --data-binary @snippet.ps
+```
+
+| | |
+|---|---|
+| `version` | Versión de PrintScript: `1.0` o `1.1` |
+| `Content-Type` | `text/plain`, en UTF-8 |
+| Body | El código fuente |
+
+**Respuestas**
+
+| Status | Cuándo | Body |
+|---|---|---|
+| `200` | Siempre que el pedido esté bien, **también si el código es inválido** | `{"errors":[...]}` |
+| `400` | La versión no existe | `{"message":"La versión '2.0' no existe. Versiones disponibles: 1.0, 1.1"}` |
+| `400` | Falta `version` o el body está vacío | Error estándar de Spring |
+| `415` | El `Content-Type` no es `text/plain` | Error estándar de Spring |
+
+Lista vacía = el código es válido. Cada error trae dónde empieza:
+
+```json
+{"errors":[{"message":"Se esperaba un valor, un identificador o '('","line":1,"column":17}]}
+```
+
+`line` y `column` son **base 1**, tal como las da la librería: la primera letra del archivo es `1:1`.
+
 ## Credenciales de GitHub Packages
 
 Las convenciones de build (`ppc.kotlin-service`) y la librería de PrintScript se bajan de GitHub Packages, que pide autenticación aunque el paquete sea público.
