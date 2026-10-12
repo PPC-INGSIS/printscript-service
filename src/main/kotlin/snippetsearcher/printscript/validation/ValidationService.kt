@@ -1,11 +1,11 @@
 package snippetsearcher.printscript.validation
 
-import org.printscript.common.PrintScriptError
 import org.printscript.common.Version
 import org.printscript.lexer.source.StreamSourceReader
 import org.printscript.runner.ValidateRunner
 import org.springframework.stereotype.Service
 import snippetsearcher.printscript.common.SourceError
+import snippetsearcher.printscript.common.toSourceError
 import java.io.InputStream
 
 @Service
@@ -19,5 +19,3 @@ class ValidationService {
             .validate { StreamSourceReader.of(source) }
             .map { it.toSourceError() }
 }
-
-private fun PrintScriptError.toSourceError() = SourceError(message, range.start.line, range.start.column)
