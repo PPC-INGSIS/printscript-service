@@ -84,7 +84,20 @@ Lista vacía = el código es válido. Cada error trae dónde empieza:
 
 Ejecuta un snippet ya guardado con los inputs dados y devuelve lo que imprimió. No compara contra valores esperados: eso lo hace Snippets.
 
-> **Todavía no funciona fuera de los tests.** El código se lee por ruta desde el Snippet Store, que la cátedra todavía no dio. Hasta tener ese cliente, cualquier pedido real responde `500` con `Snippet Store no configurado`. Los tests usan una implementación en memoria.
+> **Store provisorio.** El código se lee por ruta desde el Snippet Store, que la cátedra todavía no dio. Mientras tanto se lee de una carpeta local: la ruta `snippets/7` es el archivo `local-store/snippets/7`. Cuando haya Snippet Store, solo cambia el bean de `SnippetReaderConfiguration`.
+
+| | |
+|---|---|
+| Propiedad | `snippet-store.local-dir` (por defecto `local-store`, relativa a donde se levanta el servicio) |
+| Variable de entorno | `SNIPPET_STORE_LOCAL_DIR` |
+
+La carpeta está en `.gitignore`. Una ruta que intente salir de ella (`..` o una ruta absoluta) responde `404`, igual que una que no existe.
+
+Para probarlo con `bootRun`, copiá un snippet de los tests:
+
+```bash
+mkdir -p local-store/snippets && cp src/test/resources/snippets/20-read-input.ps local-store/snippets/7
+```
 
 ```bash
 curl -X POST localhost:8082/execute \
