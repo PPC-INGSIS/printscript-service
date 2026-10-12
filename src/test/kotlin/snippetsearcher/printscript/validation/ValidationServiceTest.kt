@@ -2,6 +2,7 @@ package snippetsearcher.printscript.validation
 
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.assertThrows
+import snippetsearcher.printscript.common.UnsupportedVersionException
 import java.io.InputStream
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue

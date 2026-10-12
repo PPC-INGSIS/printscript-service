@@ -1,4 +1,4 @@
-package snippetsearcher.printscript.validation
+package snippetsearcher.printscript.common
 
 import org.printscript.common.Version
 
