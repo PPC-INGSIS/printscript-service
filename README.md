@@ -80,6 +80,51 @@ Lista vacía = el código es válido. Cada error trae dónde empieza:
 
 `line` y `column` son **base 1**, tal como las da la librería: la primera letra del archivo es `1:1`.
 
+### `POST /execute`
+
+Ejecuta un snippet ya guardado con los inputs dados y devuelve lo que imprimió. No compara contra valores esperados: eso lo hace Snippets.
+
+> **Todavía no funciona fuera de los tests.** El código se lee por ruta desde el Snippet Store, que la cátedra todavía no dio. Hasta tener ese cliente, cualquier pedido real responde `500` con `Snippet Store no configurado`. Los tests usan una implementación en memoria.
+
+```bash
+curl -X POST localhost:8082/execute \
+  -H "Content-Type: application/json" \
+  -d '{"path":"snippets/7","version":"1.1","inputs":["Juan","3"]}'
+```
+
+| Campo | |
+|---|---|
+| `path` | Ruta del snippet en el Snippet Store |
+| `version` | Versión de PrintScript: `1.0` o `1.1` |
+| `inputs` | Lo que devuelve cada `readInput`, en orden. `[]` si no lee nada. Los que sobran se ignoran |
+
+**Respuestas**
+
+| Status | Cuándo | Body |
+|---|---|---|
+| `200` | Siempre que el pedido esté bien, **también si la ejecución falla** | `{"outputs":[...],"error":...}` |
+| `400` | La versión no existe | `{"message":"La versión '2.0' no existe. Versiones disponibles: 1.0, 1.1"}` |
+| `400` | Falta un campo del body | Error estándar de Spring |
+| `404` | No hay snippet en esa ruta | `{"message":"No hay ningún snippet en la ruta 'snippets/7'"}` |
+
+Si terminó bien, `error` es `null`:
+
+```json
+{"outputs":["Nombre: ","Veces: ","Hola Juan","3"],"error":null}
+```
+
+Un error de sintaxis, uno de ejecución o la falta de inputs **no** son errores del pedido: responden `200` con el error y lo impreso hasta ese momento.
+
+```json
+{"outputs":["antes"],"error":{"message":"...","line":2,"column":9}}
+```
+
+A tener en cuenta:
+
+- **El prompt de `readInput` sale como output.** La librería lo imprime antes de leer, así que `readInput("Nombre: ")` agrega `"Nombre: "` a `outputs`.
+- **`readEnv` nunca lee las variables del servidor.** Cualquier `readEnv` corta la ejecución con `La variable de entorno 'X' no está definida.` y su posición.
+- **Si faltan inputs, el error viene sin posición.** `line` y `column` llegan en `null`: la librería no le pasa la posición a quien da los inputs, y cuando el error llega al servicio ya no hay forma de saber en qué sentencia estaba. El mensaje dice cuántos se enviaron: `Faltan inputs: el snippet pidió más de los 1 enviados`.
+
 ## Credenciales de GitHub Packages
 
 Las convenciones de build (`ppc.kotlin-service`) y la librería de PrintScript se bajan de GitHub Packages, que pide autenticación aunque el paquete sea público.
