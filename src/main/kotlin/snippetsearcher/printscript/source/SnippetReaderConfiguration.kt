@@ -1,13 +1,16 @@
 package snippetsearcher.printscript.source
 
+import org.springframework.beans.factory.annotation.Value
 import org.springframework.context.annotation.Bean
 import org.springframework.context.annotation.Configuration
+import java.nio.file.Path
 
-// La cátedra todavía no dio el Snippet Store, así que no hay cliente real.
-// Este bean existe solo para que el contexto levante: cualquier lectura falla con 500.
-// Cuando haya cliente, se reemplaza por la implementación que le pide el código al store.
+// La cátedra todavía no dio el Snippet Store: mientras tanto los snippets se leen de una carpeta local.
+// Cuando haya cliente, se reemplaza solo este bean por la implementación que le pide el código al store.
 @Configuration
 class SnippetReaderConfiguration {
     @Bean
-    fun snippetReader() = SnippetReader { throw UnsupportedOperationException("Snippet Store no configurado") }
+    fun snippetReader(
+        @Value("\${snippet-store.local-dir}") directory: Path,
+    ): SnippetReader = LocalSnippetReader(directory)
 }
