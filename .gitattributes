@@ -1,0 +1,2 @@
+# Siempre LF: los tests verifican líneas y columnas exactas de los snippets
+*.ps text eol=lf
