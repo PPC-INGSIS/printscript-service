@@ -5,6 +5,8 @@ import org.junit.jupiter.api.assertThrows
 import kotlin.test.assertEquals
 import kotlin.test.assertNull
 
+private const val PREFIX = "Faltan inputs: el snippet pidió más de los que se enviaron"
+
 class CollectingIoTest {
     @Test
     fun `print acumula en orden`() {
@@ -26,12 +28,17 @@ class CollectingIoTest {
 
     @Test
     fun `read sin inputs restantes falla diciendo cuántos se enviaron`() {
-        val io = CollectingIo(listOf("Juan"))
-        io.read("Nombre: ")
+        assertEquals("$PREFIX (se envió 1)", missingInputMessage(1))
+    }
 
-        val exception = assertThrows<MissingInputException> { io.read("Veces: ") }
+    @Test
+    fun `el mensaje de inputs faltantes se lee bien sin inputs`() {
+        assertEquals("$PREFIX (no se envió ninguno)", missingInputMessage(0))
+    }
 
-        assertEquals("Faltan inputs: el snippet pidió más de los 1 enviados", exception.message)
+    @Test
+    fun `el mensaje de inputs faltantes se lee bien con varios inputs`() {
+        assertEquals("$PREFIX (se enviaron 2)", missingInputMessage(2))
     }
 
     @Test
@@ -60,5 +67,12 @@ class CollectingIoTest {
         io.print("dos")
 
         assertEquals(listOf("uno"), snapshot)
+    }
+
+    private fun missingInputMessage(sent: Int): String? {
+        val io = CollectingIo(List(sent) { "input" })
+        repeat(sent) { io.read("") }
+
+        return assertThrows<MissingInputException> { io.read("") }.message
     }
 }

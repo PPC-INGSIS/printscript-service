@@ -2,35 +2,34 @@ package snippetsearcher.printscript.execution
 
 import org.printscript.common.Result
 import org.printscript.common.Version
-import org.printscript.lexer.source.StreamSourceReader
+import org.printscript.lexer.source.StringSourceReader
 import org.printscript.runner.ExecuteRunner
 import org.springframework.stereotype.Service
 import snippetsearcher.printscript.common.SourceError
-import snippetsearcher.printscript.common.resolveVersion
 import snippetsearcher.printscript.common.toSourceError
-import snippetsearcher.printscript.source.SnippetReader
-import java.io.InputStream
 
 @Service
-class ExecutionService(
-    private val snippetReader: SnippetReader,
-) {
-    fun execute(request: ExecutionRequest): ExecutionResponse {
-        // Antes de abrir la fuente: una versión inválida no debería costar una lectura al store
-        val version = resolveVersion(request.version)
-        val io = CollectingIo(request.inputs)
-        val error = snippetReader.open(request.path).use { run(version, io, it) }
+class ExecutionService {
+    fun execute(
+        code: String,
+        version: Version,
+        inputs: List<String>,
+    ): ExecutionResponse {
+        val io = CollectingIo(inputs)
+        val error = run(code, version, io)
         return ExecutionResponse(io.outputs, error)
     }
 
     private fun run(
+        code: String,
         version: Version,
         io: CollectingIo,
-        source: InputStream,
     ): SourceError? =
         try {
-            val result = ExecuteRunner(version, io).execute { StreamSourceReader.of(source) }
-            (result as? Result.Failure)?.error?.toSourceError()
+            when (val result = ExecuteRunner(version, io).execute { StringSourceReader(code) }) {
+                is Result.Success -> null
+                is Result.Failure -> result.error.toSourceError()
+            }
         } catch (exception: MissingInputException) {
             // Sin posición: read no recibe el rango de la sentencia y ExecuteRunner no atrapa
             // la excepción, así que cuando llega acá ya no hay forma de saber dónde estaba

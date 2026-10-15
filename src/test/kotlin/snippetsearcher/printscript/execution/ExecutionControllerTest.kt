@@ -2,32 +2,25 @@ package snippetsearcher.printscript.execution
 
 import org.junit.jupiter.api.Test
 import org.springframework.beans.factory.annotation.Autowired
-import org.springframework.boot.test.context.TestConfiguration
 import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest
-import org.springframework.context.annotation.Bean
 import org.springframework.context.annotation.Import
 import org.springframework.http.MediaType
 import org.springframework.test.json.JsonCompareMode
 import org.springframework.test.web.servlet.MockMvc
 import org.springframework.test.web.servlet.post
-import snippetsearcher.printscript.source.InMemorySnippetReader
+import tools.jackson.databind.json.JsonMapper
 
-// Con el service real y el Snippet Store en memoria: así se prueba la librería de punta a punta
+// Con el service real: no tiene estado ni dependencias, y así se prueba la librería de punta a punta
 @WebMvcTest(ExecutionController::class)
-@Import(ExecutionService::class, ExecutionControllerTest.Store::class)
+@Import(ExecutionService::class)
 class ExecutionControllerTest(
     @Autowired private val mockMvc: MockMvc,
 ) {
-    @TestConfiguration
-    class Store {
-        @Bean
-        fun snippetReader() =
-            InMemorySnippetReader.fromResources("10-hola-mundo.ps", "20-read-input.ps", "con-error-de-ejecucion.ps")
-    }
+    private val json = JsonMapper()
 
     @Test
     fun `un snippet con println responde 200 con lo impreso`() {
-        execute("""{"path":"snippets/10-hola-mundo.ps","version":"1.0","inputs":[]}""").andExpect {
+        execute("10-hola-mundo.ps", "1.0").andExpect {
             status { isOk() }
             content { json("""{"outputs":["Joe Doe"],"error":null}""", JsonCompareMode.STRICT) }
         }
@@ -35,7 +28,7 @@ class ExecutionControllerTest(
 
     @Test
     fun `con inputs suficientes responde 200 con los prompts y lo impreso`() {
-        execute("""{"path":"snippets/20-read-input.ps","version":"1.1","inputs":["Juan","3"]}""").andExpect {
+        execute("20-read-input.ps", "1.1", "Juan", "3").andExpect {
             status { isOk() }
             jsonPath("$.outputs.length()") { value(4) }
             jsonPath("$.outputs[0]") { value("Nombre: ") }
@@ -45,7 +38,7 @@ class ExecutionControllerTest(
 
     @Test
     fun `con inputs faltantes responde 200 con el error sin posición`() {
-        execute("""{"path":"snippets/20-read-input.ps","version":"1.1","inputs":["Juan"]}""").andExpect {
+        execute("20-read-input.ps", "1.1", "Juan").andExpect {
             status { isOk() }
             content {
                 json(
@@ -53,7 +46,7 @@ class ExecutionControllerTest(
                     {
                       "outputs": ["Nombre: ", "Veces: "],
                       "error": {
-                        "message": "Faltan inputs: el snippet pidió más de los 1 enviados",
+                        "message": "Faltan inputs: el snippet pidió más de los que se enviaron (se envió 1)",
                         "line": null,
                         "column": null
                       }
@@ -67,7 +60,7 @@ class ExecutionControllerTest(
 
     @Test
     fun `un error de ejecución responde 200 con el error y lo impreso hasta ahí`() {
-        execute("""{"path":"snippets/con-error-de-ejecucion.ps","version":"1.0","inputs":[]}""").andExpect {
+        execute("con-error-de-ejecucion.ps", "1.0").andExpect {
             status { isOk() }
             jsonPath("$.outputs.length()") { value(1) }
             jsonPath("$.outputs[0]") { value("antes") }
@@ -78,30 +71,33 @@ class ExecutionControllerTest(
 
     @Test
     fun `una versión que no existe responde 400 con el motivo`() {
-        execute("""{"path":"snippets/10-hola-mundo.ps","version":"2.0","inputs":[]}""").andExpect {
+        execute("10-hola-mundo.ps", "2.0").andExpect {
             status { isBadRequest() }
             jsonPath("$.message") { value("La versión '2.0' no existe. Versiones disponibles: 1.0, 1.1") }
         }
     }
 
     @Test
-    fun `sin inputs en el body responde 400`() {
-        execute("""{"path":"snippets/10-hola-mundo.ps","version":"1.0"}""").andExpect {
-            status { isBadRequest() }
-        }
+    fun `sin code en el body responde 400`() {
+        post("""{"version":"1.0","inputs":[]}""").andExpect { status { isBadRequest() } }
     }
 
     @Test
-    fun `una ruta que no existe responde 404 con el motivo`() {
-        execute("""{"path":"snippets/no-existe","version":"1.1","inputs":[]}""").andExpect {
-            status { isNotFound() }
-            jsonPath("$.message") { value("No hay ningún snippet en la ruta 'snippets/no-existe'") }
-        }
+    fun `sin inputs en el body responde 400`() {
+        post("""{"code":"println(1);","version":"1.0"}""").andExpect { status { isBadRequest() } }
     }
 
-    private fun execute(body: String) =
+    private fun execute(
+        name: String,
+        version: String,
+        vararg inputs: String,
+    ) = post(json.writeValueAsString(mapOf("code" to snippet(name), "version" to version, "inputs" to inputs.toList())))
+
+    private fun post(body: String) =
         mockMvc.post("/execute") {
             contentType = MediaType.APPLICATION_JSON
             content = body
         }
+
+    private fun snippet(name: String): String = javaClass.getResource("/snippets/$name")!!.readText()
 }

@@ -1,8 +1,9 @@
 package snippetsearcher.printscript.execution
 
-// inputs se consumen en orden, uno por cada readInput
+// El código llega en el body, como en /validate: leerlo del store es responsabilidad de Snippets.
+// inputs se consumen en orden, uno por cada readInput.
 data class ExecutionRequest(
-    val path: String,
+    val code: String,
     val version: String,
     val inputs: List<String>,
 )
