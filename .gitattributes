@@ -1,2 +1,2 @@
-# GitHub toma .ps como PostScript y muestra los snippets como binarios en los PRs
-*.ps text eol=lf diff linguist-language=Text
+# Siempre LF: los tests verifican líneas y columnas exactas de los snippets
+*.ps text eol=lf
