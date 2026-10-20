@@ -80,6 +80,48 @@ Lista vacía = el código es válido. Cada error trae dónde empieza:
 
 `line` y `column` son **base 1**, tal como las da la librería: la primera letra del archivo es `1:1`.
 
+### `POST /execute`
+
+Ejecuta código con los inputs dados y devuelve lo que imprimió. Igual que `/validate`, recibe el contenido y no una ruta: leer el snippet del store es responsabilidad de Snippets. No compara contra valores esperados: eso también lo hace Snippets.
+
+```bash
+curl -X POST localhost:8082/execute \
+  -H "Content-Type: application/json" \
+  -d '{"code":"let nombre: string = readInput(\"Nombre: \");\nprintln(\"Hola \" + nombre);","version":"1.1","inputs":["Juan"]}'
+```
+
+| Campo | |
+|---|---|
+| `code` | El código fuente |
+| `version` | Versión de PrintScript: `1.0` o `1.1` |
+| `inputs` | Lo que devuelve cada `readInput`, en orden. `[]` si no lee nada. Los que sobran se ignoran |
+
+**Respuestas**
+
+| Status | Cuándo | Body |
+|---|---|---|
+| `200` | Siempre que el pedido esté bien, **también si la ejecución falla** | `{"outputs":[...],"error":...}` |
+| `400` | La versión no existe | `{"message":"La versión '2.0' no existe. Versiones disponibles: 1.0, 1.1"}` |
+| `400` | Falta un campo del body | Error estándar de Spring |
+
+Si terminó bien, `error` es `null`:
+
+```json
+{"outputs":["Nombre: ","Hola Juan"],"error":null}
+```
+
+Un error de sintaxis, uno de ejecución o la falta de inputs **no** son errores del pedido: responden `200` con el error y lo impreso hasta ese momento.
+
+```json
+{"outputs":["antes"],"error":{"message":"...","line":2,"column":9}}
+```
+
+A tener en cuenta:
+
+- **El prompt de `readInput` sale como output.** La librería lo imprime antes de leer, así que `readInput("Nombre: ")` agrega `"Nombre: "` a `outputs`.
+- **`readEnv` nunca lee las variables del servidor.** Cualquier `readEnv` corta la ejecución con `La variable de entorno 'X' no está definida.` y su posición.
+- **Si faltan inputs, el error viene sin posición.** `line` y `column` llegan en `null`: la librería no le pasa la posición a quien da los inputs, y cuando el error llega al servicio ya no hay forma de saber en qué sentencia estaba. El mensaje dice cuántos se enviaron: `Faltan inputs: el snippet pidió más de los que se enviaron (se envió 1)`.
+
 ## Credenciales de GitHub Packages
 
 Las convenciones de build (`ppc.kotlin-service`) y la librería de PrintScript se bajan de GitHub Packages, que pide autenticación aunque el paquete sea público.
