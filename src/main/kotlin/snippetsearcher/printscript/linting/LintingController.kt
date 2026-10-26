@@ -1,0 +1,35 @@
+package snippetsearcher.printscript.linting
+
+import org.printscript.runner.config.loadAnalyzerConfig
+import org.springframework.http.MediaType
+import org.springframework.http.ResponseEntity
+import org.springframework.web.bind.annotation.PostMapping
+import org.springframework.web.bind.annotation.RequestBody
+import org.springframework.web.bind.annotation.RestController
+import snippetsearcher.printscript.common.ApiError
+import snippetsearcher.printscript.common.RulesResolution
+import snippetsearcher.printscript.common.VersionResolution
+import snippetsearcher.printscript.common.resolveRules
+import snippetsearcher.printscript.common.resolveVersion
+import tools.jackson.databind.json.JsonMapper
+
+@RestController
+class LintingController(
+    private val lintingService: LintingService,
+    private val jsonMapper: JsonMapper,
+) {
+    // Si falta un campo del body, Spring responde 400 antes de llegar acá
+    @PostMapping("/lint", consumes = [MediaType.APPLICATION_JSON_VALUE])
+    fun lint(
+        @RequestBody request: LintingRequest,
+    ): ResponseEntity<*> =
+        when (val version = resolveVersion(request.version)) {
+            is VersionResolution.Unsupported -> ResponseEntity.badRequest().body(ApiError(version.message))
+            is VersionResolution.Supported ->
+                when (val rules = resolveRules(request.rules, jsonMapper, ::loadAnalyzerConfig)) {
+                    is RulesResolution.Invalid -> ResponseEntity.badRequest().body(ApiError(rules.message))
+                    is RulesResolution.Supported ->
+                        ResponseEntity.ok(lintingService.lint(request.code, version.version, rules.config))
+                }
+        }
+}

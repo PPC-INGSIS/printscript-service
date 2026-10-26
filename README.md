@@ -189,6 +189,66 @@ A tener en cuenta:
 - **Solo detecta errores léxicos.** El formateador trabaja sobre tokens, sin parsear: un carácter inválido o un string sin cerrar dan error, pero `let x: number = ;` se formatea igual. Para saber si el código es válido está `/validate`.
 - **Se descarta el whitespace del final.** Los espacios y saltos de línea después del último token no salen en `formatted`.
 
+### `POST /lint`
+
+Analiza código con las reglas dadas y devuelve las violaciones. Igual que `/format`, recibe el contenido y no una ruta.
+
+```bash
+curl -X POST localhost:8082/lint \
+  -H "Content-Type: application/json" \
+  -d '{"code":"let my_var: number = 1;","version":"1.1","rules":{"identifier_format":"camel case"}}'
+```
+
+| Campo | |
+|---|---|
+| `code` | El código fuente |
+| `version` | Versión de PrintScript: `1.0` o `1.1` |
+| `rules` | Las reglas de lint, con las mismas claves que el archivo de configuración de la librería. `{}` aplica los defaults |
+
+**Reglas**
+
+| Clave | Tipo | Valores |
+|---|---|---|
+| `identifier_format` | string | `"camel case"` o `"snake case"`: la convención que tienen que seguir los nombres de las variables |
+| `mandatory-variable-or-literal-in-println` | booleano | `true`: el argumento de `println` tiene que ser un identificador o un literal, no una expresión |
+| `mandatory-variable-or-literal-in-readInput` | booleano | `true`: lo mismo para `readInput`. Solo aplica en `1.1` |
+
+Una regla que no aparece no se aplica: con `{}` no hay violaciones posibles, salvo los errores de sintaxis.
+
+**Respuestas**
+
+| Status | Cuándo | Body |
+|---|---|---|
+| `200` | Siempre que el pedido esté bien, haya o no violaciones | `{"violations":[...]}` |
+| `400` | La versión no existe | `{"message":"La versión '2.0' no existe. Versiones disponibles: 1.0, 1.1"}` |
+| `400` | Las reglas son inválidas | `{"message":"Regla de analisis desconocida: 'no-existe'"}` |
+| `400` | Falta un campo del body | Error estándar de Spring |
+
+Lista vacía = sin violaciones. Cada violación trae la regla, dónde empieza y su severidad:
+
+```json
+{"violations":[{"rule":"identifier-naming","message":"El identificador 'my_var' no sigue la convención de nombres configurada.","line":1,"column":5,"severity":"WARNING"}]}
+```
+
+| `rule` | Regla que la genera | `severity` |
+|---|---|---|
+| `identifier-naming` | `identifier_format` | `WARNING` |
+| `println-argument` | `mandatory-variable-or-literal-in-println` | `ERROR` |
+| `read-input-argument` | `mandatory-variable-or-literal-in-readInput` | `ERROR` |
+| `syntax` | Ninguna: es un error de sintaxis | `ERROR` |
+
+`line` y `column` son **base 1**, como en `/validate`.
+
+Las reglas inválidas responden con el mensaje de la librería, que puede ser:
+
+- Una clave que no existe: `Regla de analisis desconocida: 'no-existe'`
+- Una convención que no existe: `'identifier_format' tiene que ser 'camel case' o 'snake case'`
+- Un valor que no es booleano: `'mandatory-variable-or-literal-in-println' tiene que ser true o false`
+
+A tener en cuenta:
+
+- **Un error de sintaxis no corta el análisis.** Aparece en `violations` con `rule` `syntax`, y la librería sigue con la sentencia siguiente: las violaciones de las demás sentencias salen igual.
+
 ## Credenciales de GitHub Packages
 
 Las convenciones de build (`ppc.kotlin-service`) y la librería de PrintScript se bajan de GitHub Packages, que pide autenticación aunque el paquete sea público.
