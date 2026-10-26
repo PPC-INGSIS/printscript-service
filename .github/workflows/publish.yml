@@ -18,7 +18,7 @@ jobs:
     uses: PPC-INGSIS/workflow/.github/workflows/update-infra.yml@v5
     with:
       image: ${{ needs.publish.outputs.image }}
-      tag-var: SNIPPETS_TAG
+      tag-var: PRINTSCRIPT_TAG
       client-id: ${{ vars.INFRA_APP_CLIENT_ID }}
     secrets:
       app-private-key: ${{ secrets.INFRA_APP_PRIVATE_KEY }}
