@@ -16,7 +16,7 @@ jobs:
     # Solo dev: prod se actualiza a mano
     if: github.ref_name == 'dev'
     # Temporal, para probarlo: se cambia a @v4 cuando se publique ese tag
-    uses: PPC-INGSIS/workflow/.github/workflows/update-infra.yml@main
+    uses: PPC-INGSIS/workflow/.github/workflows/update-infra.yml@v4
     with:
       image: ${{ needs.publish.outputs.image }}
       tag-var: PRINTSCRIPT_TAG
