@@ -85,6 +85,16 @@ class ExecutionControllerTest(
     }
 
     @Test
+    fun `sin un campo del body responde 400 con los Problem Details de Spring`() {
+        post("""{"version":"1.0","inputs":[]}""").andExpect {
+            status { isBadRequest() }
+            content { contentType(MediaType.APPLICATION_PROBLEM_JSON) }
+            jsonPath("$.status") { value(400) }
+            jsonPath("$.title") { value("Bad Request") }
+        }
+    }
+
+    @Test
     fun `sin inputs en el body responde 400`() {
         post("""{"code":"println(1);","version":"1.0"}""").andExpect { status { isBadRequest() } }
     }
