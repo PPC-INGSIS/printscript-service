@@ -7,6 +7,7 @@ import org.printscript.formatter.config.BracePosition
 import org.printscript.formatter.config.FormatterConfig
 import org.printscript.formatter.config.Indent
 import org.printscript.formatter.config.Spacing
+import java.math.BigInteger
 import kotlin.test.assertEquals
 
 class FormatRulesResolutionTest {
@@ -119,6 +120,10 @@ class FormatRulesResolutionTest {
                     "La regla 'blank-lines-after-println' acepta valores entre 0 y 2, se recibió 3",
                 ("if-indent" to 9) to "La regla 'if-indent' acepta valores entre 0 y 8, se recibió 9",
                 ("indent-inside-if" to -1) to "La regla 'indent-inside-if' acepta valores entre 0 y 8, se recibió -1",
+                ("if-indent" to 3_000_000_000L) to
+                    "La regla 'if-indent' acepta valores entre 0 y 8, se recibió 3000000000",
+                ("if-indent" to BigInteger("10000000000000000000")) to
+                    "La regla 'if-indent' acepta valores entre 0 y 8, se recibió 10000000000000000000",
             )
 
         for ((rule, message) in cases) {

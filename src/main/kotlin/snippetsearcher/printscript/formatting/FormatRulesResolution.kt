@@ -20,20 +20,25 @@ sealed interface FormatRulesResolution {
 // key es la clave tal como llegó en el pedido, para nombrarla en los conflictos
 private data class Entry(
     val key: String,
-    val rule: FormatRule,
-    val value: Any,
+    val rule: FormatRule<*>,
+    val setting: FormatSetting,
 )
 
 fun resolveFormatRules(
     rules: Map<String, Any?>,
     version: Version,
 ): FormatRulesResolution {
-    rules.firstNotNullOfOrNull { (key, value) -> problemWith(key, value) }?.let { return it }
-    val entries = rules.mapNotNull { (key, value) -> translate(key, value) }
+    val entries = mutableListOf<Entry>()
+    for ((key, value) in rules) {
+        when (val parsed = entryFor(key, value)) {
+            is Parsed.Problem -> return FormatRulesResolution.Invalid(parsed.message, key)
+            is Parsed.Valid -> parsed.value?.let { entries += it }
+        }
+    }
     findConflict(entries)?.let { return it }
     val (applied, ignored) = entries.partition { it.rule.since <= version }
     return FormatRulesResolution.Supported(
-        config = applied.fold(FormatterConfig()) { config, entry -> entry.rule.apply(config, entry.value) },
+        config = applied.fold(FormatterConfig()) { config, entry -> entry.setting.applyTo(config) },
         ignoredRules = ignored.map { it.rule.id }.distinct(),
         deprecatedKeys = rules.keys.filter { deprecatedKey(it) != null },
     )
@@ -41,58 +46,32 @@ fun resolveFormatRules(
 
 private fun deprecatedKey(key: String) = DEPRECATED_FORMAT_KEYS.find { it.key == key }
 
-private fun ruleFor(key: String) = FormatRule.entries.find { it.id == key } ?: deprecatedKey(key)?.rule
-
-private fun problemWith(
+// Los alias se traducen antes de parsear, así hay un solo camino de validación.
+// Null: la regla queda ausente (un alias que con false no define nada, o un flag en false)
+private fun entryFor(
     key: String,
     value: Any?,
-): FormatRulesResolution.Invalid? {
-    val rule = ruleFor(key) ?: return FormatRulesResolution.Invalid("Regla de formato desconocida: '$key'", key)
-    val problem =
-        if (deprecatedKey(key) is DeprecatedFormatKey.Toggle) {
-            "tiene que ser true o false".takeIf { value !is Boolean }
-        } else {
-            problemWithValue(rule.type, value)
-        }
-    return problem?.let { FormatRulesResolution.Invalid("La regla '$key' $it", key) }
-}
-
-private fun problemWithValue(
-    type: FormatRuleType,
-    value: Any?,
-): String? =
-    when (type) {
-        is FormatRuleType.Choice ->
-            "tiene que ser ${type.options.joinToString(" o ") { "'$it'" }}".takeIf { value !in type.options }
-        is FormatRuleType.Integer ->
-            when (value) {
-                !is Int -> "espera un número entero"
-                !in type.range -> "acepta valores entre ${type.range.first} y ${type.range.last}, se recibió $value"
-                else -> null
-            }
-        FormatRuleType.Flag -> "solo acepta true".takeIf { value !is Boolean }
-    }
-
-// Los alias se traducen antes de comparar y aplicar. Null: la regla queda ausente (un flag en false también)
-private fun translate(
-    key: String,
-    value: Any?,
-): Entry? {
-    val rule = ruleFor(key) ?: return null
+): Parsed<Entry?> {
     val deprecated = deprecatedKey(key)
-    val translated =
+    val rule =
+        FORMAT_RULES.find { it.id == key } ?: deprecated?.rule
+            ?: return Parsed.Problem("Regla de formato desconocida: '$key'")
+    val parsed =
         when {
-            deprecated !is DeprecatedFormatKey.Toggle -> value
-            value == true -> deprecated.whenTrue
-            else -> deprecated.whenFalse
+            deprecated !is DeprecatedFormatKey.Toggle -> rule.parse(value)
+            value !is Boolean -> Parsed.Problem("tiene que ser true o false")
+            else -> rule.parse(if (value) deprecated.whenTrue else deprecated.whenFalse ?: return Parsed.Valid(null))
         }
-    return if (translated == null || translated == false) null else Entry(key, rule, translated)
+    return when (parsed) {
+        is Parsed.Problem -> Parsed.Problem("La regla '$key' ${parsed.message}")
+        is Parsed.Valid -> Parsed.Valid(Entry(key, rule, parsed.value).takeIf { parsed.value.value != false })
+    }
 }
 
 private fun findConflict(entries: List<Entry>): FormatRulesResolution.Invalid? =
     entries.groupBy { it.rule }.firstNotNullOfOrNull { (rule, sameRule) ->
         val first = sameRule.first()
-        sameRule.find { it.value != first.value }?.let {
+        sameRule.find { it.setting.value != first.setting.value }?.let {
             val message = "'${first.key}' y '${it.key}' definen '${rule.id}' con valores distintos"
             FormatRulesResolution.Invalid(message, rule.id)
         }
