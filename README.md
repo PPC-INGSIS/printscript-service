@@ -147,60 +147,95 @@ Formatea código con las reglas dadas y devuelve el resultado. Igual que `/execu
 ```bash
 curl -X POST localhost:8082/format \
   -H "Content-Type: application/json" \
-  -d '{"code":"let x:number=1;","version":"1.1","rules":{"enforce-spacing-around-equals":true}}'
+  -d '{"code":"let x:number=1;","version":"1.1","rules":{"space-around-assignment":"always"}}'
 ```
 
 | Campo | |
 |---|---|
 | `code` | El código fuente |
 | `version` | Versión de PrintScript: `1.0` o `1.1` |
-| `rules` | Las reglas de formato, con las mismas claves que el archivo de configuración de la librería. `{}` aplica los defaults |
+| `rules` | Las reglas de formato, por id. `{}` aplica los defaults |
 
 **Reglas**
 
-| Clave | Tipo | Valores |
-|---|---|---|
-| `enforce-spacing-before-colon-in-declaration` | booleano | `true`: un espacio antes del `:`. `false`: ninguno |
-| `enforce-spacing-after-colon-in-declaration` | booleano | `true`: un espacio después del `:`. `false`: ninguno |
-| `enforce-spacing-around-equals` | booleano | `true`: un espacio a cada lado del `=`. `false`: ninguno |
-| `enforce-no-spacing-around-equals` | booleano | `true`: ningún espacio alrededor del `=`. `false`: uno |
-| `line-breaks-after-println` | entero | Líneas en blanco después de un `println`, de `0` a `2` |
-| `mandatory-line-break-after-statement` | booleano | Un salto de línea después de cada `;` |
-| `mandatory-space-surrounding-operations` | booleano | Un espacio a cada lado de los operadores |
-| `mandatory-single-space-separation` | booleano | Un solo espacio entre tokens |
-| `if-brace-same-line` | booleano | La `{` del `if` en la misma línea |
-| `if-brace-below-line` | booleano | La `{` del `if` en la línea de abajo |
-| `indent-inside-if` | entero | Espacios de indentación dentro de un `if`, de `0` a `8` |
+| Id | Valor | Desde | Qué hace |
+|---|---|---|---|
+| `space-before-colon` | `"always"` o `"never"` | `1.0` | Un espacio antes del `:` de la declaración, o ninguno |
+| `space-after-colon` | `"always"` o `"never"` | `1.0` | Un espacio después del `:` de la declaración, o ninguno |
+| `space-around-assignment` | `"always"` o `"never"` | `1.0` | Un espacio a cada lado del `=`, o ninguno |
+| `blank-lines-after-println` | entero, de `0` a `2` | `1.0` | Líneas en blanco después de un `println` |
+| `line-break-after-statement` | `true` | `1.0` | Un salto de línea después de cada `;` |
+| `space-around-operators` | `true` | `1.0` | Un espacio a cada lado de los operadores |
+| `single-space-separation` | `true` | `1.0` | Un solo espacio entre tokens |
+| `if-brace-position` | `"same-line"` o `"next-line"` | `1.1` | La `{` del `if` en la misma línea o en la de abajo |
+| `if-indent` | entero, de `0` a `8` | `1.1` | Espacios de indentación dentro de un `if` |
 
-Una regla que no aparece no se aplica: esa parte del código queda como estaba. Si dos reglas tocan lo mismo (por ejemplo, las dos de `=`), gana la última.
+- **Una regla que no aparece no se aplica:** esa parte del código queda como estaba.
+- **Las reglas de valor `true` son flags:** `true` las activa y `false` equivale a no mandarlas.
+- **Las reglas de una versión posterior a la del snippet se ignoran:** `if-indent` en un snippet `1.0` no es un error, no se aplica y su id vuelve en `ignoredRules`. El valor se valida igual.
+
+**Claves deprecadas**
+
+Las claves del archivo de configuración de la librería, que `/format` aceptaba antes, se siguen aceptando como alias. **Se van a quitar:** hay que pasar a los ids de arriba.
+
+| Clave vieja | Con `true` | Con `false` |
+|---|---|---|
+| `enforce-spacing-before-colon-in-declaration` | `space-before-colon: "always"` | `space-before-colon: "never"` |
+| `enforce-spacing-after-colon-in-declaration` | `space-after-colon: "always"` | `space-after-colon: "never"` |
+| `enforce-spacing-around-equals` | `space-around-assignment: "always"` | `space-around-assignment: "never"` |
+| `enforce-no-spacing-around-equals` | `space-around-assignment: "never"` | `space-around-assignment: "always"` |
+| `mandatory-line-break-after-statement` | `line-break-after-statement: true` | ausente |
+| `mandatory-space-surrounding-operations` | `space-around-operators: true` | ausente |
+| `mandatory-single-space-separation` | `single-space-separation: true` | ausente |
+| `if-brace-same-line` | `if-brace-position: "same-line"` | ausente |
+| `if-brace-below-line` | `if-brace-position: "next-line"` | ausente |
+| `line-breaks-after-println: n` | `blank-lines-after-println: n` | |
+| `indent-inside-if: n` | `if-indent: n` | |
+
+- **Si el pedido usa alguna, la respuesta `200` trae el header `Deprecation: @1793836800`** ([RFC 9745](https://www.rfc-editor.org/rfc/rfc9745)): deprecadas desde el 2026-11-05.
+- **Dos claves que definen la misma regla con valores distintos son un `400`,** por ejemplo `enforce-spacing-around-equals` y `enforce-no-spacing-around-equals` en `true`. Antes ganaba la última. Con el mismo valor no hay error.
 
 **Respuestas**
 
 | Status | Cuándo | Body |
 |---|---|---|
-| `200` | Siempre que el pedido esté bien, **también si el código tiene un error** | `{"formatted":...,"error":...}` |
+| `200` | Siempre que el pedido esté bien, **también si el código tiene un error** | `{"formatted":...,"error":...,"ignoredRules":[...]}` |
 | `400` | La versión no existe | Problem Details (ver [Errores](#errores)) |
-| `400` | Las reglas son inválidas | Problem Details (ver [Errores](#errores)) |
+| `400` | Las reglas son inválidas | Problem Details con `rule` (ver abajo) |
 | `400` | Falta un campo del body | Problem Details de Spring |
 
-Si terminó bien, `error` es `null`:
+Si terminó bien, `error` es `null`. `ignoredRules` siempre viene, vacía si no se ignoró nada:
 
 ```json
-{"formatted":"let x:number = 1;","error":null}
+{"formatted":"let x:number = 1;","error":null,"ignoredRules":[]}
 ```
 
 Un error en el código **no** es un error del pedido: responde `200` con el error y `formatted` en `null`.
 
 ```json
-{"formatted":null,"error":{"message":"...","line":2,"column":19}}
+{"formatted":null,"error":{"message":"...","line":2,"column":19},"ignoredRules":[]}
 ```
 
-Las reglas inválidas responden con el mensaje de la librería, que puede ser:
+Las reglas inválidas traen en `rule` el id (o la clave vieja) que falló:
 
-- Una clave que no existe: `Unknown formatting rule: 'no-existe'`
-- Un booleano donde va un entero, o al revés: `Rule 'indent-inside-if' expects a int value`
-- Un entero fuera de rango: `Rule 'indent-inside-if' expects a value within 0..8, got 9`
-- Un valor que no es booleano ni entero: `La regla 'indent-inside-if' tiene que ser un booleano o un numero entero`
+```json
+{
+  "title": "Bad Request",
+  "status": 400,
+  "detail": "La regla 'if-indent' acepta valores entre 0 y 8, se recibió 12",
+  "instance": "/format",
+  "message": "La regla 'if-indent' acepta valores entre 0 y 8, se recibió 12",
+  "rule": "if-indent"
+}
+```
+
+- Un id que no existe: `Regla de formato desconocida: 'no-existe'`
+- Un valor que no está entre los permitidos: `La regla 'space-before-colon' tiene que ser 'always' o 'never'`
+- Algo que no es un entero donde va un entero: `La regla 'if-indent' espera un número entero`
+- Un entero fuera de rango: `La regla 'if-indent' acepta valores entre 0 y 8, se recibió 12`
+- Algo que no es booleano en un flag: `La regla 'line-break-after-statement' solo acepta true`
+- Algo que no es booleano en una clave vieja: `La regla 'if-brace-same-line' tiene que ser true o false`
+- Dos claves con valores distintos para la misma regla: `'enforce-spacing-around-equals' y 'enforce-no-spacing-around-equals' definen 'space-around-assignment' con valores distintos`. Acá `rule` es el id nuevo.
 
 A tener en cuenta:
 

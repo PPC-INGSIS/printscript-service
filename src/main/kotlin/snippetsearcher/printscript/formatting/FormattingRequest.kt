@@ -1,7 +1,8 @@
 package snippetsearcher.printscript.formatting
 
 // El código llega en el body, como en /execute: leerlo del store es responsabilidad de Snippets.
-// rules usa las mismas claves que el archivo de configuración de la librería; {} aplica los defaults.
+// rules usa los ids de reglas del servicio, con las claves de la librería como alias deprecados.
+// {} aplica los defaults.
 data class FormattingRequest(
     val code: String,
     val version: String,

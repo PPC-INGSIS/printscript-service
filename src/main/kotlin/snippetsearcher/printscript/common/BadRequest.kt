@@ -10,3 +10,8 @@ fun badRequest(detail: String): ResponseEntity<ProblemDetail> {
     problem.setProperty("message", detail)
     return ResponseEntity.badRequest().body(problem)
 }
+
+fun badRequest(
+    detail: String,
+    rule: String,
+): ResponseEntity<ProblemDetail> = badRequest(detail).also { it.body?.setProperty("rule", rule) }
