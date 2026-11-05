@@ -54,6 +54,8 @@ class LintingControllerTest(
     fun `una versión que no existe responde 400 con el motivo`() {
         lint("40-para-lintear.ps", "2.0", emptyMap()).andExpect {
             status { isBadRequest() }
+            content { contentType(MediaType.APPLICATION_PROBLEM_JSON) }
+            jsonPath("$.detail") { value("La versión '2.0' no existe. Versiones disponibles: 1.0, 1.1") }
             jsonPath("$.message") { value("La versión '2.0' no existe. Versiones disponibles: 1.0, 1.1") }
         }
     }
@@ -62,6 +64,8 @@ class LintingControllerTest(
     fun `una regla desconocida responde 400 con el motivo`() {
         lint("40-para-lintear.ps", "1.1", mapOf("no-existe" to true)).andExpect {
             status { isBadRequest() }
+            content { contentType(MediaType.APPLICATION_PROBLEM_JSON) }
+            jsonPath("$.detail") { value("Regla de analisis desconocida: 'no-existe'") }
             jsonPath("$.message") { value("Regla de analisis desconocida: 'no-existe'") }
         }
     }
@@ -70,6 +74,8 @@ class LintingControllerTest(
     fun `un identifier_format inválido responde 400 con el motivo`() {
         lint("40-para-lintear.ps", "1.1", mapOf("identifier_format" to "pascal case")).andExpect {
             status { isBadRequest() }
+            content { contentType(MediaType.APPLICATION_PROBLEM_JSON) }
+            jsonPath("$.detail") { value("'identifier_format' tiene que ser 'camel case' o 'snake case'") }
             jsonPath("$.message") { value("'identifier_format' tiene que ser 'camel case' o 'snake case'") }
         }
     }

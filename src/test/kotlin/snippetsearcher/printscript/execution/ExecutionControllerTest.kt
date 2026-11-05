@@ -73,6 +73,8 @@ class ExecutionControllerTest(
     fun `una versión que no existe responde 400 con el motivo`() {
         execute("10-hola-mundo.ps", "2.0").andExpect {
             status { isBadRequest() }
+            content { contentType(MediaType.APPLICATION_PROBLEM_JSON) }
+            jsonPath("$.detail") { value("La versión '2.0' no existe. Versiones disponibles: 1.0, 1.1") }
             jsonPath("$.message") { value("La versión '2.0' no existe. Versiones disponibles: 1.0, 1.1") }
         }
     }

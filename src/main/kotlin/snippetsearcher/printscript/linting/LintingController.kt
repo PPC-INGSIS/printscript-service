@@ -6,9 +6,9 @@ import org.springframework.http.ResponseEntity
 import org.springframework.web.bind.annotation.PostMapping
 import org.springframework.web.bind.annotation.RequestBody
 import org.springframework.web.bind.annotation.RestController
-import snippetsearcher.printscript.common.ApiError
 import snippetsearcher.printscript.common.RulesResolution
 import snippetsearcher.printscript.common.VersionResolution
+import snippetsearcher.printscript.common.badRequest
 import snippetsearcher.printscript.common.resolveRules
 import snippetsearcher.printscript.common.resolveVersion
 import tools.jackson.databind.json.JsonMapper
@@ -24,10 +24,10 @@ class LintingController(
         @RequestBody request: LintingRequest,
     ): ResponseEntity<*> =
         when (val version = resolveVersion(request.version)) {
-            is VersionResolution.Unsupported -> ResponseEntity.badRequest().body(ApiError(version.message))
+            is VersionResolution.Unsupported -> badRequest(version.message)
             is VersionResolution.Supported ->
                 when (val rules = resolveRules(request.rules, jsonMapper, ::loadAnalyzerConfig)) {
-                    is RulesResolution.Invalid -> ResponseEntity.badRequest().body(ApiError(rules.message))
+                    is RulesResolution.Invalid -> badRequest(rules.message)
                     is RulesResolution.Supported ->
                         ResponseEntity.ok(lintingService.lint(request.code, version.version, rules.config))
                 }
