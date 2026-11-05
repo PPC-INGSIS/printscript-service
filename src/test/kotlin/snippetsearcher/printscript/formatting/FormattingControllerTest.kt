@@ -96,6 +96,31 @@ class FormattingControllerTest(
     }
 
     @Test
+    fun `un entero que no entra en un Int responde 400 por fuera de rango`() {
+        post("""{"code":"println(1);","version":"1.1","rules":{"if-indent":3000000000}}""").andExpect {
+            status { isBadRequest() }
+            jsonPath("$.detail") { value("La regla 'if-indent' acepta valores entre 0 y 8, se recibió 3000000000") }
+            jsonPath("$.rule") { value("if-indent") }
+        }
+    }
+
+    @Test
+    fun `dos claves con valores distintos para la misma regla responden 400 con el motivo`() {
+        val rules = mapOf("enforce-spacing-around-equals" to true, "enforce-no-spacing-around-equals" to true)
+        val detail =
+            "'enforce-spacing-around-equals' y 'enforce-no-spacing-around-equals' " +
+                "definen 'space-around-assignment' con valores distintos"
+
+        format("30-para-formatear.ps", "1.1", rules).andExpect {
+            status { isBadRequest() }
+            content { contentType(MediaType.APPLICATION_PROBLEM_JSON) }
+            jsonPath("$.detail") { value(detail) }
+            jsonPath("$.message") { value(detail) }
+            jsonPath("$.rule") { value("space-around-assignment") }
+        }
+    }
+
+    @Test
     fun `sin rules en el body responde 400`() {
         post("""{"code":"println(1);","version":"1.0"}""").andExpect { status { isBadRequest() } }
     }
