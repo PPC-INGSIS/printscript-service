@@ -46,6 +46,24 @@ curl localhost:8082/actuator/health
 
 El `8082` está reservado en el repo de infraestructura para no chocar con los otros servicios cuando corren todos en la misma máquina.
 
+## Errores
+
+Los errores del pedido (4xx) responden con Problem Details ([RFC 9457](https://www.rfc-editor.org/rfc/rfc9457)) y `Content-Type: application/problem+json`. **Los clientes tienen que leer `detail`.**
+
+```json
+{
+  "title": "Bad Request",
+  "status": 400,
+  "detail": "La versión '2.0' no existe. Versiones disponibles: 1.0, 1.1",
+  "instance": "/format",
+  "message": "La versión '2.0' no existe. Versiones disponibles: 1.0, 1.1"
+}
+```
+
+- **`message` está deprecado y se va a quitar.** Trae el mismo texto que `detail`.
+- **Los 4xx que arma Spring no traen `message`:** falta un campo o un parámetro, JSON mal formado, `415`.
+- **`type` no viene en el body.** Según el RFC, si falta equivale a `about:blank`.
+
 ## Endpoints
 
 ### `POST /validate?version={id}`
@@ -68,9 +86,9 @@ curl -X POST "localhost:8082/validate?version=1.1" \
 | Status | Cuándo | Body |
 |---|---|---|
 | `200` | Siempre que el pedido esté bien, **también si el código es inválido** | `{"errors":[...]}` |
-| `400` | La versión no existe | `{"message":"La versión '2.0' no existe. Versiones disponibles: 1.0, 1.1"}` |
-| `400` | Falta `version` o el body está vacío | Error estándar de Spring |
-| `415` | El `Content-Type` no es `text/plain` | Error estándar de Spring |
+| `400` | La versión no existe | Problem Details (ver [Errores](#errores)) |
+| `400` | Falta `version` o el body está vacío | Problem Details de Spring |
+| `415` | El `Content-Type` no es `text/plain` | Problem Details de Spring |
 
 Lista vacía = el código es válido. Cada error trae dónde empieza:
 
@@ -101,8 +119,8 @@ curl -X POST localhost:8082/execute \
 | Status | Cuándo | Body |
 |---|---|---|
 | `200` | Siempre que el pedido esté bien, **también si la ejecución falla** | `{"outputs":[...],"error":...}` |
-| `400` | La versión no existe | `{"message":"La versión '2.0' no existe. Versiones disponibles: 1.0, 1.1"}` |
-| `400` | Falta un campo del body | Error estándar de Spring |
+| `400` | La versión no existe | Problem Details (ver [Errores](#errores)) |
+| `400` | Falta un campo del body | Problem Details de Spring |
 
 Si terminó bien, `error` es `null`:
 
@@ -161,9 +179,9 @@ Una regla que no aparece no se aplica: esa parte del código queda como estaba. 
 | Status | Cuándo | Body |
 |---|---|---|
 | `200` | Siempre que el pedido esté bien, **también si el código tiene un error** | `{"formatted":...,"error":...}` |
-| `400` | La versión no existe | `{"message":"La versión '2.0' no existe. Versiones disponibles: 1.0, 1.1"}` |
-| `400` | Las reglas son inválidas | `{"message":"Unknown formatting rule: 'no-existe'"}` |
-| `400` | Falta un campo del body | Error estándar de Spring |
+| `400` | La versión no existe | Problem Details (ver [Errores](#errores)) |
+| `400` | Las reglas son inválidas | Problem Details (ver [Errores](#errores)) |
+| `400` | Falta un campo del body | Problem Details de Spring |
 
 Si terminó bien, `error` es `null`:
 
@@ -220,9 +238,9 @@ Una regla que no aparece no se aplica: con `{}` no hay violaciones posibles, sal
 | Status | Cuándo | Body |
 |---|---|---|
 | `200` | Siempre que el pedido esté bien, haya o no violaciones | `{"violations":[...]}` |
-| `400` | La versión no existe | `{"message":"La versión '2.0' no existe. Versiones disponibles: 1.0, 1.1"}` |
-| `400` | Las reglas son inválidas | `{"message":"Regla de analisis desconocida: 'no-existe'"}` |
-| `400` | Falta un campo del body | Error estándar de Spring |
+| `400` | La versión no existe | Problem Details (ver [Errores](#errores)) |
+| `400` | Las reglas son inválidas | Problem Details (ver [Errores](#errores)) |
+| `400` | Falta un campo del body | Problem Details de Spring |
 
 Lista vacía = sin violaciones. Cada violación trae la regla, dónde empieza y su severidad:
 

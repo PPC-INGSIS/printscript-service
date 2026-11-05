@@ -73,6 +73,8 @@ class ExecutionControllerTest(
     fun `una versión que no existe responde 400 con el motivo`() {
         execute("10-hola-mundo.ps", "2.0").andExpect {
             status { isBadRequest() }
+            content { contentType(MediaType.APPLICATION_PROBLEM_JSON) }
+            jsonPath("$.detail") { value("La versión '2.0' no existe. Versiones disponibles: 1.0, 1.1") }
             jsonPath("$.message") { value("La versión '2.0' no existe. Versiones disponibles: 1.0, 1.1") }
         }
     }
@@ -80,6 +82,16 @@ class ExecutionControllerTest(
     @Test
     fun `sin code en el body responde 400`() {
         post("""{"version":"1.0","inputs":[]}""").andExpect { status { isBadRequest() } }
+    }
+
+    @Test
+    fun `sin un campo del body responde 400 con los Problem Details de Spring`() {
+        post("""{"version":"1.0","inputs":[]}""").andExpect {
+            status { isBadRequest() }
+            content { contentType(MediaType.APPLICATION_PROBLEM_JSON) }
+            jsonPath("$.status") { value(400) }
+            jsonPath("$.title") { value("Bad Request") }
+        }
     }
 
     @Test

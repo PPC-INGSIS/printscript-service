@@ -48,6 +48,8 @@ class FormattingControllerTest(
     fun `una versión que no existe responde 400 con el motivo`() {
         format("30-para-formatear.ps", "2.0", emptyMap()).andExpect {
             status { isBadRequest() }
+            content { contentType(MediaType.APPLICATION_PROBLEM_JSON) }
+            jsonPath("$.detail") { value("La versión '2.0' no existe. Versiones disponibles: 1.0, 1.1") }
             jsonPath("$.message") { value("La versión '2.0' no existe. Versiones disponibles: 1.0, 1.1") }
         }
     }
@@ -56,6 +58,8 @@ class FormattingControllerTest(
     fun `una regla desconocida responde 400 con el motivo`() {
         format("30-para-formatear.ps", "1.1", mapOf("no-existe" to true)).andExpect {
             status { isBadRequest() }
+            content { contentType(MediaType.APPLICATION_PROBLEM_JSON) }
+            jsonPath("$.detail") { value("Unknown formatting rule: 'no-existe'") }
             jsonPath("$.message") { value("Unknown formatting rule: 'no-existe'") }
         }
     }
@@ -64,6 +68,8 @@ class FormattingControllerTest(
     fun `una regla con el tipo incorrecto responde 400 con el motivo`() {
         format("30-para-formatear.ps", "1.1", mapOf("indent-inside-if" to true)).andExpect {
             status { isBadRequest() }
+            content { contentType(MediaType.APPLICATION_PROBLEM_JSON) }
+            jsonPath("$.detail") { value("Rule 'indent-inside-if' expects a int value") }
             jsonPath("$.message") { value("Rule 'indent-inside-if' expects a int value") }
         }
     }
