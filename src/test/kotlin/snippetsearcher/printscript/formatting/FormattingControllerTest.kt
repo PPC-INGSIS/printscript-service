@@ -1,7 +1,10 @@
 package snippetsearcher.printscript.formatting
 
 import org.junit.jupiter.api.Test
+import org.junit.jupiter.api.extension.ExtendWith
 import org.springframework.beans.factory.annotation.Autowired
+import org.springframework.boot.test.system.CapturedOutput
+import org.springframework.boot.test.system.OutputCaptureExtension
 import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest
 import org.springframework.context.annotation.Import
 import org.springframework.http.MediaType
@@ -9,6 +12,7 @@ import org.springframework.test.json.JsonCompareMode
 import org.springframework.test.web.servlet.MockMvc
 import org.springframework.test.web.servlet.post
 import tools.jackson.databind.json.JsonMapper
+import kotlin.test.assertTrue
 
 // Con el service real: no tiene estado ni dependencias, y así se prueba la librería de punta a punta
 @WebMvcTest(FormattingController::class)
@@ -41,6 +45,20 @@ class FormattingControllerTest(
             header { string("Deprecation", "@1793836800") }
             content { json(formattedWithIfIndent, JsonCompareMode.STRICT) }
         }
+    }
+
+    @Test
+    @ExtendWith(OutputCaptureExtension::class)
+    fun `con claves deprecadas loguea un WARN con las claves usadas`(output: CapturedOutput) {
+        val rules = mapOf("enforce-spacing-around-equals" to true, "if-indent" to 4)
+
+        format("30-para-formatear.ps", "1.1", rules).andExpect { status { isOk() } }
+
+        assertTrue(
+            output.out.lines().any {
+                "WARN" in it && "/format recibió claves deprecadas: [enforce-spacing-around-equals]" in it
+            },
+        )
     }
 
     @Test
