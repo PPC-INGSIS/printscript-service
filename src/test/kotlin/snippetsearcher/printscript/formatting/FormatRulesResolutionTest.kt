@@ -7,6 +7,8 @@ import org.printscript.formatter.config.BracePosition
 import org.printscript.formatter.config.FormatterConfig
 import org.printscript.formatter.config.Indent
 import org.printscript.formatter.config.Spacing
+import snippetsearcher.printscript.common.RulesResolution
+import snippetsearcher.printscript.common.resolveRules
 import java.math.BigInteger
 import kotlin.test.assertEquals
 
@@ -67,7 +69,7 @@ class FormatRulesResolutionTest {
             )
 
         for ((deprecated, rule) in cases) {
-            val expected = resolve(listOfNotNull(rule).toMap()) as FormatRulesResolution.Supported
+            val expected = resolve(listOfNotNull(rule).toMap()) as RulesResolution.Supported<FormatterConfig>
 
             assertEquals(
                 expected.copy(deprecatedKeys = listOf(deprecated.first)),
@@ -197,7 +199,7 @@ class FormatRulesResolutionTest {
     fun `informa solo las claves deprecadas usadas`() {
         val rules = mapOf("if-brace-same-line" to false, "if-indent" to 2, "line-breaks-after-println" to 0)
 
-        val resolution = resolve(rules) as FormatRulesResolution.Supported
+        val resolution = resolve(rules) as RulesResolution.Supported<FormatterConfig>
 
         assertEquals(listOf("if-brace-same-line", "line-breaks-after-println"), resolution.deprecatedKeys)
     }
@@ -205,16 +207,16 @@ class FormatRulesResolutionTest {
     private fun resolve(
         rules: Map<String, Any>,
         version: Version = Version.V11,
-    ) = resolveFormatRules(rules, version)
+    ) = resolveRules(rules, version, FORMAT_RULES, DEPRECATED_FORMAT_KEYS, FormatterConfig(), "formato")
 
     private fun invalid(
         message: String,
         rule: String,
-    ) = FormatRulesResolution.Invalid(message, rule)
+    ) = RulesResolution.Invalid(message, rule)
 
     private fun supported(
         config: FormatterConfig,
         ignoredRules: List<String> = emptyList(),
         deprecatedKeys: List<String> = emptyList(),
-    ) = FormatRulesResolution.Supported(config, ignoredRules, deprecatedKeys)
+    ) = RulesResolution.Supported(config, ignoredRules, deprecatedKeys)
 }
