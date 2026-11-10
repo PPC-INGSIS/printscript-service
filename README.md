@@ -353,6 +353,61 @@ Sin parámetros. Siempre responde `200`:
 - **`versions` va de la más vieja a la más nueva.** `latest` es la última de la lista.
 - **Cada versión es un objeto y no un string**, para poder sumarle campos más adelante sin romper el contrato.
 
+### `GET /rules/format?version={id}` y `GET /rules/lint?version={id}`
+
+Devuelven el catálogo de reglas de formato y de lint: qué reglas hay, desde qué versión, qué valores aceptan y qué valor proponer al activarlas. Snippets lo usa para armar las pantallas de reglas sin tener la lista en su código. Sale de las mismas reglas que validan `/format` y `/lint`.
+
+```bash
+curl "localhost:8082/rules/format?version=1.1"
+```
+
+| Parámetro | |
+|---|---|
+| `version` | Opcional. Versión de PrintScript: `1.0` o `1.1`. Sin el parámetro, la última |
+
+**Respuestas**
+
+| Status | Cuándo | Body |
+|---|---|---|
+| `200` | La versión existe o no se mandó | `{"version":"1.1","rules":[...]}` |
+| `400` | La versión no existe | Problem Details (ver [Errores](#errores)) |
+
+```json
+{
+  "version": "1.1",
+  "rules": [
+    {
+      "id": "if-brace-position",
+      "description": "Dónde va la llave que abre un if",
+      "since": "1.1",
+      "schema": { "type": "string", "enum": ["same-line", "next-line"], "default": "same-line" }
+    },
+    {
+      "id": "line-break-after-statement",
+      "description": "Salto de línea después de cada sentencia",
+      "since": "1.0",
+      "schema": { "type": "boolean", "const": true }
+    }
+  ]
+}
+```
+
+- **`version` es la versión usada:** la pedida, o la última si no se mandó.
+- **Solo vienen las reglas de esa versión** (`since` menor o igual). Con `1.0`, `/rules/format` no trae `if-brace-position` ni `if-indent`, y `/rules/lint` no trae `read-input-argument`.
+- **El orden es el de las tablas de reglas de `/format` y `/lint`.**
+- **Solo vienen los ids nuevos:** las claves deprecadas no aparecen.
+- **`description` está en castellano y puede cambiar.** El que identifica a la regla es `id`.
+
+`schema` es [JSON Schema](https://json-schema.org/) y depende del tipo de la regla:
+
+| Tipo | `schema` |
+|---|---|
+| Opciones | `{"type":"string","enum":[...],"default":...}` |
+| Entero | `{"type":"integer","minimum":n,"maximum":m,"default":...}` |
+| Flag | `{"type":"boolean","const":true}`. Sin `default` |
+
+- **`default` es el valor que se propone al activar la regla, no uno que se aplique solo.** Una regla que no se manda a `/format` o `/lint` no se aplica.
+
 ## Credenciales de GitHub Packages
 
 Las convenciones de build (`ppc.kotlin-service`) y la librería de PrintScript se bajan de GitHub Packages, que pide autenticación aunque el paquete sea público.
