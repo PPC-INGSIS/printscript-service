@@ -17,36 +17,54 @@ class LintingControllerTest(
     @Autowired private val mockMvc: MockMvc,
 ) {
     private val json = JsonMapper()
+    private val violations =
+        """
+        {"violations":[
+          {"rule":"identifier-naming",
+           "message":"El identificador 'mi_variable' no sigue la convención de nombres configurada.",
+           "line":1,"column":5,"severity":"WARNING"},
+          {"rule":"println-argument",
+           "message":"println solo admite un identificador o un literal, no una expresión.",
+           "line":3,"column":9,"severity":"ERROR"}
+        ],"ignoredRules":[]}
+        """
 
     @Test
     fun `sin violaciones responde 200 con la lista vacía`() {
         lint("40-para-lintear.ps", "1.1", emptyMap()).andExpect {
             status { isOk() }
-            content { json("""{"violations":[]}""", JsonCompareMode.STRICT) }
+            header { doesNotExist("Deprecation") }
+            content { json("""{"violations":[],"ignoredRules":[]}""", JsonCompareMode.STRICT) }
         }
     }
 
     @Test
     fun `con violaciones responde 200 con cada una y su posición`() {
+        val rules = mapOf("identifier-naming" to "camel-case", "println-argument" to true)
+
+        lint("40-para-lintear.ps", "1.1", rules).andExpect {
+            status { isOk() }
+            header { doesNotExist("Deprecation") }
+            content { json(violations, JsonCompareMode.STRICT) }
+        }
+    }
+
+    @Test
+    fun `con claves deprecadas responde 200 con las mismas violaciones y el header Deprecation`() {
         val rules = mapOf("identifier_format" to "camel case", "mandatory-variable-or-literal-in-println" to true)
 
         lint("40-para-lintear.ps", "1.1", rules).andExpect {
             status { isOk() }
-            content {
-                json(
-                    """
-                    {"violations":[
-                      {"rule":"identifier-naming",
-                       "message":"El identificador 'mi_variable' no sigue la convención de nombres configurada.",
-                       "line":1,"column":5,"severity":"WARNING"},
-                      {"rule":"println-argument",
-                       "message":"println solo admite un identificador o un literal, no una expresión.",
-                       "line":3,"column":9,"severity":"ERROR"}
-                    ]}
-                    """,
-                    JsonCompareMode.STRICT,
-                )
-            }
+            header { string("Deprecation", "@1793836800") }
+            content { json(violations, JsonCompareMode.STRICT) }
+        }
+    }
+
+    @Test
+    fun `read-input-argument en un snippet 1_0 se ignora y se informa en ignoredRules`() {
+        lint("10-hola-mundo.ps", "1.0", mapOf("read-input-argument" to true)).andExpect {
+            status { isOk() }
+            content { json("""{"violations":[],"ignoredRules":["read-input-argument"]}""", JsonCompareMode.STRICT) }
         }
     }
 
@@ -65,18 +83,22 @@ class LintingControllerTest(
         lint("40-para-lintear.ps", "1.1", mapOf("no-existe" to true)).andExpect {
             status { isBadRequest() }
             content { contentType(MediaType.APPLICATION_PROBLEM_JSON) }
-            jsonPath("$.detail") { value("Regla de analisis desconocida: 'no-existe'") }
-            jsonPath("$.message") { value("Regla de analisis desconocida: 'no-existe'") }
+            jsonPath("$.detail") { value("Regla de lint desconocida: 'no-existe'") }
+            jsonPath("$.message") { value("Regla de lint desconocida: 'no-existe'") }
+            jsonPath("$.rule") { value("no-existe") }
         }
     }
 
     @Test
-    fun `un identifier_format inválido responde 400 con el motivo`() {
-        lint("40-para-lintear.ps", "1.1", mapOf("identifier_format" to "pascal case")).andExpect {
+    fun `un identifier-naming inválido responde 400 con el motivo y la regla`() {
+        val message = "La regla 'identifier-naming' tiene que ser 'camel-case' o 'snake-case'"
+
+        lint("40-para-lintear.ps", "1.1", mapOf("identifier-naming" to "pascal-case")).andExpect {
             status { isBadRequest() }
             content { contentType(MediaType.APPLICATION_PROBLEM_JSON) }
-            jsonPath("$.detail") { value("'identifier_format' tiene que ser 'camel case' o 'snake case'") }
-            jsonPath("$.message") { value("'identifier_format' tiene que ser 'camel case' o 'snake case'") }
+            jsonPath("$.detail") { value(message) }
+            jsonPath("$.message") { value(message) }
+            jsonPath("$.rule") { value("identifier-naming") }
         }
     }
 

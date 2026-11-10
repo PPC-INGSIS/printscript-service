@@ -249,54 +249,88 @@ Analiza código con las reglas dadas y devuelve las violaciones. Igual que `/for
 ```bash
 curl -X POST localhost:8082/lint \
   -H "Content-Type: application/json" \
-  -d '{"code":"let my_var: number = 1;","version":"1.1","rules":{"identifier_format":"camel case"}}'
+  -d '{"code":"let my_var: number = 1;","version":"1.1","rules":{"identifier-naming":"camel-case"}}'
 ```
 
 | Campo | |
 |---|---|
 | `code` | El código fuente |
 | `version` | Versión de PrintScript: `1.0` o `1.1` |
-| `rules` | Las reglas de lint, con las mismas claves que el archivo de configuración de la librería. `{}` aplica los defaults |
+| `rules` | Las reglas de lint, por id. `{}` aplica los defaults |
 
 **Reglas**
 
-| Clave | Tipo | Valores |
-|---|---|---|
-| `identifier_format` | string | `"camel case"` o `"snake case"`: la convención que tienen que seguir los nombres de las variables |
-| `mandatory-variable-or-literal-in-println` | booleano | `true`: el argumento de `println` tiene que ser un identificador o un literal, no una expresión |
-| `mandatory-variable-or-literal-in-readInput` | booleano | `true`: lo mismo para `readInput`. Solo aplica en `1.1` |
+| Id | Valor | Desde | Qué hace |
+|---|---|---|---|
+| `identifier-naming` | `"camel-case"` o `"snake-case"` | `1.0` | La convención que tienen que seguir los nombres de las variables |
+| `println-argument` | `true` | `1.0` | El argumento de `println` tiene que ser un identificador o un literal, no una expresión |
+| `read-input-argument` | `true` | `1.1` | Lo mismo para `readInput` |
 
-Una regla que no aparece no se aplica: con `{}` no hay violaciones posibles, salvo los errores de sintaxis.
+Los ids son los mismos `rule` que traen las violaciones.
+
+- **Una regla que no aparece no se aplica:** con `{}` no hay violaciones posibles, salvo los errores de sintaxis.
+- **Las reglas de valor `true` son flags:** `true` las activa y `false` equivale a no mandarlas.
+- **Las reglas de una versión posterior a la del snippet se ignoran:** `read-input-argument` en un snippet `1.0` no es un error, no se aplica y su id vuelve en `ignoredRules`. El valor se valida igual.
+
+**Claves deprecadas**
+
+Las claves del archivo de configuración de la librería, que `/lint` aceptaba antes, se siguen aceptando como alias. **Se van a quitar:** hay que pasar a los ids de arriba.
+
+| Clave vieja | Valor | Se traduce a |
+|---|---|---|
+| `identifier_format` | `"camel case"` | `identifier-naming: "camel-case"` |
+| `identifier_format` | `"snake case"` | `identifier-naming: "snake-case"` |
+| `mandatory-variable-or-literal-in-println` | `true` | `println-argument: true` |
+| `mandatory-variable-or-literal-in-println` | `false` | ausente |
+| `mandatory-variable-or-literal-in-readInput` | `true` | `read-input-argument: true` |
+| `mandatory-variable-or-literal-in-readInput` | `false` | ausente |
+
+- **Si el pedido usa alguna, la respuesta `200` trae el header `Deprecation: @1793836800`** ([RFC 9745](https://www.rfc-editor.org/rfc/rfc9745)), el mismo que `/format`.
+- **Dos claves que definen la misma regla con valores distintos son un `400`,** por ejemplo `identifier_format: "snake case"` e `identifier-naming: "camel-case"`. Con el mismo valor no hay error.
 
 **Respuestas**
 
 | Status | Cuándo | Body |
 |---|---|---|
-| `200` | Siempre que el pedido esté bien, haya o no violaciones | `{"violations":[...]}` |
+| `200` | Siempre que el pedido esté bien, haya o no violaciones | `{"violations":[...],"ignoredRules":[...]}` |
 | `400` | La versión no existe | Problem Details (ver [Errores](#errores)) |
-| `400` | Las reglas son inválidas | Problem Details (ver [Errores](#errores)) |
+| `400` | Las reglas son inválidas | Problem Details con `rule` (ver abajo) |
 | `400` | Falta un campo del body | Problem Details de Spring |
 
-Lista vacía = sin violaciones. Cada violación trae la regla, dónde empieza y su severidad:
+Lista vacía = sin violaciones. Cada violación trae la regla, dónde empieza y su severidad. `ignoredRules` siempre viene, vacía si no se ignoró nada:
 
 ```json
-{"violations":[{"rule":"identifier-naming","message":"El identificador 'my_var' no sigue la convención de nombres configurada.","line":1,"column":5,"severity":"WARNING"}]}
+{"violations":[{"rule":"identifier-naming","message":"El identificador 'my_var' no sigue la convención de nombres configurada.","line":1,"column":5,"severity":"WARNING"}],"ignoredRules":[]}
 ```
 
-| `rule` | Regla que la genera | `severity` |
-|---|---|---|
-| `identifier-naming` | `identifier_format` | `WARNING` |
-| `println-argument` | `mandatory-variable-or-literal-in-println` | `ERROR` |
-| `read-input-argument` | `mandatory-variable-or-literal-in-readInput` | `ERROR` |
-| `syntax` | Ninguna: es un error de sintaxis | `ERROR` |
+| `rule` | `severity` |
+|---|---|
+| `identifier-naming` | `WARNING` |
+| `println-argument` | `ERROR` |
+| `read-input-argument` | `ERROR` |
+| `syntax` | `ERROR`. No es una regla: es un error de sintaxis |
 
 `line` y `column` son **base 1**, como en `/validate`.
 
-Las reglas inválidas responden con el mensaje de la librería, que puede ser:
+Las reglas inválidas traen en `rule` el id (o la clave vieja) que falló:
 
-- Una clave que no existe: `Regla de analisis desconocida: 'no-existe'`
-- Una convención que no existe: `'identifier_format' tiene que ser 'camel case' o 'snake case'`
-- Un valor que no es booleano: `'mandatory-variable-or-literal-in-println' tiene que ser true o false`
+```json
+{
+  "title": "Bad Request",
+  "status": 400,
+  "detail": "La regla 'identifier-naming' tiene que ser 'camel-case' o 'snake-case'",
+  "instance": "/lint",
+  "message": "La regla 'identifier-naming' tiene que ser 'camel-case' o 'snake-case'",
+  "rule": "identifier-naming"
+}
+```
+
+- Un id que no existe: `Regla de lint desconocida: 'no-existe'`
+- Una convención que no existe: `La regla 'identifier-naming' tiene que ser 'camel-case' o 'snake-case'`
+- Una convención que no existe en la clave vieja: `La regla 'identifier_format' tiene que ser 'camel case' o 'snake case'`
+- Algo que no es booleano en un flag: `La regla 'println-argument' solo acepta true`
+- Algo que no es booleano en una clave vieja: `La regla 'mandatory-variable-or-literal-in-println' tiene que ser true o false`
+- Dos claves con valores distintos para la misma regla: `'identifier_format' y 'identifier-naming' definen 'identifier-naming' con valores distintos`. Acá `rule` es el id nuevo.
 
 A tener en cuenta:
 
