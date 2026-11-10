@@ -8,6 +8,7 @@ import org.printscript.common.Version
 import snippetsearcher.printscript.common.RulesResolution
 import snippetsearcher.printscript.common.resolveRules
 import kotlin.test.assertEquals
+import kotlin.test.assertIs
 
 class LintRulesResolutionTest {
     @Test
@@ -145,6 +146,15 @@ class LintRulesResolutionTest {
             listOf("identifier_format", "mandatory-variable-or-literal-in-readInput"),
             resolution.deprecatedKeys,
         )
+    }
+
+    @Test
+    fun `el default de cada regla del catálogo es un valor válido`() {
+        for (rule in LINT_RULES.filter { it.default != null }) {
+            val resolution = resolve(mapOf(rule.id to rule.default!!))
+
+            assertIs<RulesResolution.Supported<*>>(resolution, rule.id)
+        }
     }
 
     private fun resolve(

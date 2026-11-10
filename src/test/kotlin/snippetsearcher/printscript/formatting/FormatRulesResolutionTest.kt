@@ -11,6 +11,7 @@ import snippetsearcher.printscript.common.RulesResolution
 import snippetsearcher.printscript.common.resolveRules
 import java.math.BigInteger
 import kotlin.test.assertEquals
+import kotlin.test.assertIs
 
 class FormatRulesResolutionTest {
     @Test
@@ -202,6 +203,15 @@ class FormatRulesResolutionTest {
         val resolution = resolve(rules) as RulesResolution.Supported<FormatterConfig>
 
         assertEquals(listOf("if-brace-same-line", "line-breaks-after-println"), resolution.deprecatedKeys)
+    }
+
+    @Test
+    fun `el default de cada regla del catálogo es un valor válido`() {
+        for (rule in FORMAT_RULES.filter { it.default != null }) {
+            val resolution = resolve(mapOf(rule.id to rule.default!!))
+
+            assertIs<RulesResolution.Supported<*>>(resolution, rule.id)
+        }
     }
 
     private fun resolve(

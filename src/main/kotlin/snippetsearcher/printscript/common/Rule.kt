@@ -12,6 +12,9 @@ class Rule<C, T : Any>(
     val id: String,
     val since: Version,
     val type: RuleType<T>,
+    val description: String,
+    // El valor que la UI propone al activar la regla, tal como lo manda el cliente
+    val default: Any? = null,
     private val apply: (C, T) -> C,
 ) {
     fun parse(value: Any?): Parsed<Setting<C>> =
