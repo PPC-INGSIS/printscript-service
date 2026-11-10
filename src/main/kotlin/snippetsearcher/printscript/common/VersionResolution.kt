@@ -13,6 +13,9 @@ sealed interface VersionResolution {
     ) : VersionResolution
 }
 
+// Las entradas del enum van de la más vieja a la más nueva
+fun latestVersion(): Version = Version.entries.last()
+
 fun resolveVersion(id: String): VersionResolution =
     Version.of(id)?.let { VersionResolution.Supported(it) }
         ?: VersionResolution.Unsupported(
