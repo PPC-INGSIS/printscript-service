@@ -5,9 +5,13 @@ import org.printscript.analyzer.config.AnalyzerConfig
 import org.printscript.analyzer.config.CamelCase
 import org.printscript.analyzer.config.SnakeCase
 import org.printscript.common.Version
+import snippetsearcher.printscript.common.RuleType
 import snippetsearcher.printscript.common.RulesResolution
 import snippetsearcher.printscript.common.resolveRules
 import kotlin.test.assertEquals
+import kotlin.test.assertIs
+import kotlin.test.assertNotNull
+import kotlin.test.assertNull
 
 class LintRulesResolutionTest {
     @Test
@@ -145,6 +149,19 @@ class LintRulesResolutionTest {
             listOf("identifier_format", "mandatory-variable-or-literal-in-readInput"),
             resolution.deprecatedKeys,
         )
+    }
+
+    @Test
+    fun `cada regla del catálogo tiene un default válido, salvo los flags que no tienen`() {
+        for (rule in LINT_RULES) {
+            if (rule.type is RuleType.Flag) {
+                assertNull(rule.default, rule.id)
+            } else {
+                val default = assertNotNull(rule.default, rule.id)
+
+                assertIs<RulesResolution.Supported<*>>(resolve(mapOf(rule.id to default)), rule.id)
+            }
+        }
     }
 
     private fun resolve(

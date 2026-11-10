@@ -3,6 +3,7 @@ package snippetsearcher.printscript.versions
 import org.printscript.common.Version
 import org.springframework.web.bind.annotation.GetMapping
 import org.springframework.web.bind.annotation.RestController
+import snippetsearcher.printscript.common.latestVersion
 
 @RestController
 class VersionsController {
@@ -10,6 +11,6 @@ class VersionsController {
     fun versions(): VersionsResponse =
         VersionsResponse(
             versions = Version.entries.map { VersionInfo(it.id) },
-            latest = Version.entries.last().id,
+            latest = latestVersion().id,
         )
 }
