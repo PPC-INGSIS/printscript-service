@@ -336,6 +336,23 @@ A tener en cuenta:
 
 - **Un error de sintaxis no corta el análisis.** Aparece en `violations` con `rule` `syntax`, y la librería sigue con la sentencia siguiente: las violaciones de las demás sentencias salen igual.
 
+### `GET /versions`
+
+Devuelve las versiones de PrintScript que soporta el servicio y cuál es la última. Snippets la usa para completar `version` al crear un snippet, sin tener una versión fija en su código.
+
+```bash
+curl localhost:8082/versions
+```
+
+Sin parámetros. Siempre responde `200`:
+
+```json
+{"versions":[{"id":"1.0"},{"id":"1.1"}],"latest":"1.1"}
+```
+
+- **`versions` va de la más vieja a la más nueva.** `latest` es la última de la lista.
+- **Cada versión es un objeto y no un string**, para poder sumarle campos más adelante sin romper el contrato.
+
 ## Credenciales de GitHub Packages
 
 Las convenciones de build (`ppc.kotlin-service`) y la librería de PrintScript se bajan de GitHub Packages, que pide autenticación aunque el paquete sea público.
