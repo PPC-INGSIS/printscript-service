@@ -7,11 +7,14 @@ import org.printscript.formatter.config.BracePosition
 import org.printscript.formatter.config.FormatterConfig
 import org.printscript.formatter.config.Indent
 import org.printscript.formatter.config.Spacing
+import snippetsearcher.printscript.common.RuleType
 import snippetsearcher.printscript.common.RulesResolution
 import snippetsearcher.printscript.common.resolveRules
 import java.math.BigInteger
 import kotlin.test.assertEquals
 import kotlin.test.assertIs
+import kotlin.test.assertNotNull
+import kotlin.test.assertNull
 
 class FormatRulesResolutionTest {
     @Test
@@ -206,11 +209,15 @@ class FormatRulesResolutionTest {
     }
 
     @Test
-    fun `el default de cada regla del catálogo es un valor válido`() {
-        for (rule in FORMAT_RULES.filter { it.default != null }) {
-            val resolution = resolve(mapOf(rule.id to rule.default!!))
+    fun `cada regla del catálogo tiene un default válido, salvo los flags que no tienen`() {
+        for (rule in FORMAT_RULES) {
+            if (rule.type is RuleType.Flag) {
+                assertNull(rule.default, rule.id)
+            } else {
+                val default = assertNotNull(rule.default, rule.id)
 
-            assertIs<RulesResolution.Supported<*>>(resolution, rule.id)
+                assertIs<RulesResolution.Supported<*>>(resolve(mapOf(rule.id to default)), rule.id)
+            }
         }
     }
 

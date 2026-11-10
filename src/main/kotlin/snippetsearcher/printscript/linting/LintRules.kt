@@ -16,8 +16,8 @@ private val IDENTIFIER_NAMING =
         "identifier-naming",
         Version.V10,
         RuleType.Choice<NamingConvention>(mapOf("camel-case" to CamelCase, "snake-case" to SnakeCase)),
-        "Convención de nombres de variables",
-        "camel-case",
+        description = "Convención de nombres de variables",
+        default = "camel-case",
     ) { c: AnalyzerConfig, v -> c.copy(namingConvention = v) }
 
 private val PRINTLN_ARGUMENT =
@@ -25,7 +25,7 @@ private val PRINTLN_ARGUMENT =
         "println-argument",
         Version.V10,
         RuleType.Flag,
-        "println solo recibe una variable o un literal",
+        description = "println solo recibe una variable o un literal",
     ) { c: AnalyzerConfig, v -> c.copy(restrictPrintlnArguments = v) }
 
 private val READ_INPUT_ARGUMENT =
@@ -33,7 +33,7 @@ private val READ_INPUT_ARGUMENT =
         "read-input-argument",
         Version.V11,
         RuleType.Flag,
-        "readInput solo recibe una variable o un literal",
+        description = "readInput solo recibe una variable o un literal",
     ) { c: AnalyzerConfig, v -> c.copy(restrictReadInputArguments = v) }
 
 val LINT_RULES: List<Rule<AnalyzerConfig, *>> = listOf(IDENTIFIER_NAMING, PRINTLN_ARGUMENT, READ_INPUT_ARGUMENT)
