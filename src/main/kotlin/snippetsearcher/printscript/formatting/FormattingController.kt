@@ -1,6 +1,5 @@
 package snippetsearcher.printscript.formatting
 
-import org.printscript.formatter.config.FormatterConfig
 import org.springframework.http.MediaType
 import org.springframework.http.ResponseEntity
 import org.springframework.web.bind.annotation.PostMapping
@@ -25,17 +24,7 @@ class FormattingController(
         when (val version = resolveVersion(request.version)) {
             is VersionResolution.Unsupported -> badRequest(version.message)
             is VersionResolution.Supported ->
-                when (
-                    val rules =
-                        resolveRules(
-                            request.rules,
-                            version.version,
-                            FORMAT_RULES,
-                            DEPRECATED_FORMAT_KEYS,
-                            FormatterConfig(),
-                            "formato",
-                        )
-                ) {
+                when (val rules = resolveRules(request.rules, version.version, FORMAT_RULE_SET)) {
                     is RulesResolution.Invalid -> badRequest(rules.message, rules.rule)
                     is RulesResolution.Supported -> {
                         val response =

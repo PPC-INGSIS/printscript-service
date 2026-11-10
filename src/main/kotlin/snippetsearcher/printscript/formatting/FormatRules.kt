@@ -8,6 +8,7 @@ import org.printscript.formatter.config.Indent
 import org.printscript.formatter.config.Spacing
 import snippetsearcher.printscript.common.DeprecatedKey
 import snippetsearcher.printscript.common.Rule
+import snippetsearcher.printscript.common.RuleSet
 import snippetsearcher.printscript.common.RuleType
 
 private val SPACING = mapOf("always" to Spacing.SINGLE, "never" to Spacing.NONE)
@@ -138,3 +139,5 @@ val DEPRECATED_FORMAT_KEYS: List<DeprecatedKey<FormatterConfig>> =
         DeprecatedKey.Renamed("line-breaks-after-println", BLANK_LINES_AFTER_PRINTLN),
         DeprecatedKey.Renamed("indent-inside-if", IF_INDENT),
     )
+
+val FORMAT_RULE_SET = RuleSet(FORMAT_RULES, DEPRECATED_FORMAT_KEYS, FormatterConfig(), "formato")

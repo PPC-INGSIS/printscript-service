@@ -7,6 +7,7 @@ import org.printscript.analyzer.config.SnakeCase
 import org.printscript.common.Version
 import snippetsearcher.printscript.common.DeprecatedKey
 import snippetsearcher.printscript.common.Rule
+import snippetsearcher.printscript.common.RuleSet
 import snippetsearcher.printscript.common.RuleType
 
 // Los ids son los mismos `rule` que la librería emite en las violaciones
@@ -51,3 +52,5 @@ val DEPRECATED_LINT_KEYS: List<DeprecatedKey<AnalyzerConfig>> =
             mapOf(true to true, false to null),
         ),
     )
+
+val LINT_RULE_SET = RuleSet(LINT_RULES, DEPRECATED_LINT_KEYS, AnalyzerConfig(), "lint")

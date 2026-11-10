@@ -150,7 +150,7 @@ class LintRulesResolutionTest {
     private fun resolve(
         rules: Map<String, Any>,
         version: Version = Version.V11,
-    ) = resolveRules(rules, version, LINT_RULES, DEPRECATED_LINT_KEYS, AnalyzerConfig(), "lint")
+    ) = resolveRules(rules, version, LINT_RULE_SET)
 
     private fun invalid(
         message: String,

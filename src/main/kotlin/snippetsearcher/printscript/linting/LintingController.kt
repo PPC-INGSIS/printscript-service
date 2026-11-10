@@ -1,6 +1,5 @@
 package snippetsearcher.printscript.linting
 
-import org.printscript.analyzer.config.AnalyzerConfig
 import org.springframework.http.MediaType
 import org.springframework.http.ResponseEntity
 import org.springframework.web.bind.annotation.PostMapping
@@ -25,17 +24,7 @@ class LintingController(
         when (val version = resolveVersion(request.version)) {
             is VersionResolution.Unsupported -> badRequest(version.message)
             is VersionResolution.Supported ->
-                when (
-                    val rules =
-                        resolveRules(
-                            request.rules,
-                            version.version,
-                            LINT_RULES,
-                            DEPRECATED_LINT_KEYS,
-                            AnalyzerConfig(),
-                            "lint",
-                        )
-                ) {
+                when (val rules = resolveRules(request.rules, version.version, LINT_RULE_SET)) {
                     is RulesResolution.Invalid -> badRequest(rules.message, rules.rule)
                     is RulesResolution.Supported -> {
                         val response =

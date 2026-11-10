@@ -38,3 +38,12 @@ sealed interface DeprecatedKey<C> {
         override val rule: Rule<C, *>,
     ) : DeprecatedKey<C>
 }
+
+// Todo lo que un endpoint necesita para resolver sus reglas. kind nombra el tipo de regla en el mensaje de una
+// desconocida: "formato", "lint"
+class RuleSet<C>(
+    val rules: List<Rule<C, *>>,
+    val deprecated: List<DeprecatedKey<C>>,
+    val empty: C,
+    val kind: String,
+)

@@ -207,7 +207,7 @@ class FormatRulesResolutionTest {
     private fun resolve(
         rules: Map<String, Any>,
         version: Version = Version.V11,
-    ) = resolveRules(rules, version, FORMAT_RULES, DEPRECATED_FORMAT_KEYS, FormatterConfig(), "formato")
+    ) = resolveRules(rules, version, FORMAT_RULE_SET)
 
     private fun invalid(
         message: String,

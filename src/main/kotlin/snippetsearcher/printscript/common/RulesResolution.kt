@@ -23,19 +23,14 @@ private data class Entry<C>(
     val setting: Setting<C>,
 )
 
-// kind nombra el tipo de regla en el mensaje de una desconocida: "formato", "lint"
-@Suppress("LongParameterList")
 fun <C> resolveRules(
     rules: Map<String, Any?>,
     version: Version,
-    catalog: List<Rule<C, *>>,
-    deprecated: List<DeprecatedKey<C>>,
-    empty: C,
-    kind: String,
+    ruleSet: RuleSet<C>,
 ): RulesResolution<C> {
     val entries = mutableListOf<Entry<C>>()
     for ((key, value) in rules) {
-        when (val parsed = entryFor(key, value, catalog, deprecated, kind)) {
+        when (val parsed = entryFor(key, value, ruleSet)) {
             is Parsed.Problem -> return RulesResolution.Invalid(parsed.message, key)
             is Parsed.Valid -> parsed.value?.let { entries += it }
         }
@@ -43,9 +38,9 @@ fun <C> resolveRules(
     findConflict(entries)?.let { return it }
     val (applied, ignored) = entries.partition { it.rule.since <= version }
     return RulesResolution.Supported(
-        config = applied.fold(empty) { config, entry -> entry.setting.applyTo(config) },
+        config = applied.fold(ruleSet.empty) { config, entry -> entry.setting.applyTo(config) },
         ignoredRules = ignored.map { it.rule.id }.distinct(),
-        deprecatedKeys = rules.keys.filter { key -> deprecated.any { it.key == key } },
+        deprecatedKeys = rules.keys.filter { key -> ruleSet.deprecated.any { it.key == key } },
     )
 }
 
@@ -54,14 +49,12 @@ fun <C> resolveRules(
 private fun <C> entryFor(
     key: String,
     value: Any?,
-    catalog: List<Rule<C, *>>,
-    deprecatedKeys: List<DeprecatedKey<C>>,
-    kind: String,
+    ruleSet: RuleSet<C>,
 ): Parsed<Entry<C>?> {
-    val deprecated = deprecatedKeys.find { it.key == key }
+    val deprecated = ruleSet.deprecated.find { it.key == key }
     val rule =
-        catalog.find { it.id == key } ?: deprecated?.rule
-            ?: return Parsed.Problem("Regla de $kind desconocida: '$key'")
+        ruleSet.rules.find { it.id == key } ?: deprecated?.rule
+            ?: return Parsed.Problem("Regla de ${ruleSet.kind} desconocida: '$key'")
     val parsed =
         when {
             deprecated !is DeprecatedKey.Mapped -> rule.parse(value)
