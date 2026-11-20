@@ -1,0 +1,7 @@
+common:
+  distributed_tracing:
+    enabled: true
+  application_logging:
+    enabled: true
+    forwarding:
+      enabled: true
