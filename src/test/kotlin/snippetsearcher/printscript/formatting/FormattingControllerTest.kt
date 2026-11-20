@@ -3,6 +3,7 @@ package snippetsearcher.printscript.formatting
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.extension.ExtendWith
 import org.springframework.beans.factory.annotation.Autowired
+import org.springframework.boot.context.properties.EnableConfigurationProperties
 import org.springframework.boot.test.system.CapturedOutput
 import org.springframework.boot.test.system.OutputCaptureExtension
 import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest
@@ -11,11 +12,15 @@ import org.springframework.http.MediaType
 import org.springframework.test.json.JsonCompareMode
 import org.springframework.test.web.servlet.MockMvc
 import org.springframework.test.web.servlet.post
+import snippetsearcher.printscript.common.Limits
 import tools.jackson.databind.json.JsonMapper
 import kotlin.test.assertTrue
 
+private const val MAX_CODE_SIZE = 64 * 1024
+
 // Con el service real: no tiene estado ni dependencias, y así se prueba la librería de punta a punta
 @WebMvcTest(FormattingController::class)
+@EnableConfigurationProperties(Limits::class)
 @Import(FormattingService::class)
 class FormattingControllerTest(
     @Autowired private val mockMvc: MockMvc,
@@ -147,6 +152,25 @@ class FormattingControllerTest(
     fun `sin code en el body responde 400`() {
         post("""{"version":"1.0","rules":{}}""").andExpect { status { isBadRequest() } }
     }
+
+    @Test
+    fun `un code de más de 64 KB responde 413 con el motivo`() {
+        withCode(" ".repeat(MAX_CODE_SIZE + 1)).andExpect {
+            status { isEqualTo(413) }
+            content { contentType(MediaType.APPLICATION_PROBLEM_JSON) }
+            jsonPath("$.title") { value("Payload Too Large") }
+            jsonPath("$.detail") { value("El código supera el tamaño máximo de 64 KB") }
+            jsonPath("$.message") { value("El código supera el tamaño máximo de 64 KB") }
+        }
+    }
+
+    @Test
+    fun `un code de exactamente 64 KB no responde 413`() {
+        withCode(" ".repeat(MAX_CODE_SIZE)).andExpect { status { isOk() } }
+    }
+
+    private fun withCode(code: String) =
+        post(json.writeValueAsString(mapOf("code" to code, "version" to "1.1", "rules" to emptyMap<String, Any>())))
 
     private fun format(
         name: String,

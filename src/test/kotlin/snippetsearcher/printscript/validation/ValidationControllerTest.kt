@@ -2,14 +2,19 @@ package snippetsearcher.printscript.validation
 
 import org.junit.jupiter.api.Test
 import org.springframework.beans.factory.annotation.Autowired
+import org.springframework.boot.context.properties.EnableConfigurationProperties
 import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest
 import org.springframework.context.annotation.Import
 import org.springframework.http.MediaType
 import org.springframework.test.web.servlet.MockMvc
 import org.springframework.test.web.servlet.post
+import snippetsearcher.printscript.common.Limits
+
+private const val MAX_CODE_SIZE = 64 * 1024
 
 // Con el service real: no tiene estado ni dependencias, y así se prueba la librería de punta a punta
 @WebMvcTest(ValidationController::class)
+@EnableConfigurationProperties(Limits::class)
 @Import(ValidationService::class)
 class ValidationControllerTest(
     @Autowired private val mockMvc: MockMvc,
@@ -64,6 +69,22 @@ class ValidationControllerTest(
     @Test
     fun `con el body vacío responde 400`() {
         validate("1.1", "").andExpect { status { isBadRequest() } }
+    }
+
+    @Test
+    fun `un code de más de 64 KB responde 413 con el motivo`() {
+        validate("1.1", " ".repeat(MAX_CODE_SIZE + 1)).andExpect {
+            status { isEqualTo(413) }
+            content { contentType(MediaType.APPLICATION_PROBLEM_JSON) }
+            jsonPath("$.title") { value("Payload Too Large") }
+            jsonPath("$.detail") { value("El código supera el tamaño máximo de 64 KB") }
+            jsonPath("$.message") { value("El código supera el tamaño máximo de 64 KB") }
+        }
+    }
+
+    @Test
+    fun `un code de exactamente 64 KB no responde 413`() {
+        validate("1.1", " ".repeat(MAX_CODE_SIZE)).andExpect { status { isOk() } }
     }
 
     private fun validate(

@@ -5,6 +5,7 @@ import org.springframework.http.ResponseEntity
 import org.springframework.web.bind.annotation.PostMapping
 import org.springframework.web.bind.annotation.RequestBody
 import org.springframework.web.bind.annotation.RestController
+import snippetsearcher.printscript.common.Limits
 import snippetsearcher.printscript.common.RulesResolution
 import snippetsearcher.printscript.common.VersionResolution
 import snippetsearcher.printscript.common.badRequest
@@ -15,13 +16,14 @@ import snippetsearcher.printscript.common.resolveVersion
 @RestController
 class LintingController(
     private val lintingService: LintingService,
+    private val limits: Limits,
 ) {
     // Si falta un campo del body, Spring responde 400 antes de llegar acá
     @PostMapping("/lint", consumes = [MediaType.APPLICATION_JSON_VALUE])
     fun lint(
         @RequestBody request: LintingRequest,
     ): ResponseEntity<*> =
-        when (val version = resolveVersion(request.version)) {
+        limits.rejectLargeCode(request.code) ?: when (val version = resolveVersion(request.version)) {
             is VersionResolution.Unsupported -> badRequest(version.message)
             is VersionResolution.Supported ->
                 when (val rules = resolveRules(request.rules, version.version, LINT_RULE_SET)) {
