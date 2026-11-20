@@ -6,11 +6,12 @@ import kotlin.test.assertEquals
 import kotlin.test.assertNull
 
 private const val PREFIX = "Faltan inputs: el snippet pidió más de los que se enviaron"
+private const val MAX_OUTPUT = 10L
 
 class CollectingIoTest {
     @Test
     fun `print acumula en orden`() {
-        val io = CollectingIo(emptyList())
+        val io = CollectingIo(emptyList(), MAX_OUTPUT)
 
         io.print("uno")
         io.print("dos")
@@ -20,7 +21,7 @@ class CollectingIoTest {
 
     @Test
     fun `read devuelve los inputs en orden`() {
-        val io = CollectingIo(listOf("Juan", "3"))
+        val io = CollectingIo(listOf("Juan", "3"), MAX_OUTPUT)
 
         assertEquals("Juan", io.read("Nombre: "))
         assertEquals("3", io.read("Veces: "))
@@ -43,7 +44,7 @@ class CollectingIoTest {
 
     @Test
     fun `read no agrega nada a los outputs`() {
-        val io = CollectingIo(listOf("Juan"))
+        val io = CollectingIo(listOf("Juan"), MAX_OUTPUT)
 
         io.read("Nombre: ")
 
@@ -52,7 +53,7 @@ class CollectingIoTest {
 
     @Test
     fun `env nunca expone variables del servidor`() {
-        val io = CollectingIo(emptyList())
+        val io = CollectingIo(emptyList(), MAX_OUTPUT)
 
         assertNull(io.env("HOME"))
         assertNull(io.env("PATH"))
@@ -60,7 +61,7 @@ class CollectingIoTest {
 
     @Test
     fun `outputs es una copia y no cambia con prints posteriores`() {
-        val io = CollectingIo(emptyList())
+        val io = CollectingIo(emptyList(), MAX_OUTPUT)
         io.print("uno")
 
         val snapshot = io.outputs
@@ -69,8 +70,20 @@ class CollectingIoTest {
         assertEquals(listOf("uno"), snapshot)
     }
 
+    @Test
+    fun `pasar el máximo de salida falla y conserva lo impreso hasta ahí`() {
+        val io = CollectingIo(emptyList(), MAX_OUTPUT)
+        io.print("12345")
+        io.print("67890")
+
+        val exception = assertThrows<OutputTooLargeException> { io.print("x") }
+
+        assertEquals("La salida superó el máximo de 10 caracteres", exception.message)
+        assertEquals(listOf("12345", "67890"), io.outputs)
+    }
+
     private fun missingInputMessage(sent: Int): String? {
-        val io = CollectingIo(List(sent) { "input" })
+        val io = CollectingIo(List(sent) { "input" }, MAX_OUTPUT)
         repeat(sent) { io.read("") }
 
         return assertThrows<MissingInputException> { io.read("") }.message
