@@ -46,6 +46,32 @@ curl localhost:8082/actuator/health
 
 El `8082` está reservado en el repo de infraestructura para no chocar con los otros servicios cuando corren todos en la misma máquina.
 
+## New Relic
+
+La imagen de Docker trae el agente de Java de New Relic. Se engancha en la JVM al arrancar, sin cambios en el código, y manda:
+
+- **Las trazas de cada pedido.** El trace id viaja en los headers HTTP: un pedido que entra a Snippets y llama a PrintScript queda en una sola traza.
+- **La latencia de cada endpoint**, con percentiles (p99 incluido).
+- **Los logs de la app**, con el trace id.
+
+Se configura con estas variables de entorno, que pone el repo de infraestructura:
+
+| Variable | |
+|---|---|
+| `NEW_RELIC_LICENSE_KEY` | Key de tipo *Ingest - License*, una por entorno |
+| `NEW_RELIC_APP_NAME` | `printscript-dev`, `printscript-prod` o `printscript-local` |
+| `NEW_RELIC_AGENT_ENABLED` | En local queda en `false` salvo que pongas tu key |
+
+- **Con `bootRun` no hay agente:** solo está en la imagen.
+- Lo que no cambia por entorno está en `newrelic/newrelic.yml`.
+
+Para probarlo en local con el compose de infraestructura:
+
+1. Creá una key de tipo *Ingest - License* en New Relic.
+2. En el `.env` de infraestructura, poné `NEW_RELIC_LICENSE_KEY=<tu-key>` y `NEW_RELIC_AGENT_ENABLED=true`.
+3. Levantá el compose y hacé pedidos a `127.0.0.1:8082`. Usá `127.0.0.1` y no `localhost`: si tenés el servicio corriendo con `bootRun`, `localhost` puede ir a ese.
+4. En un par de minutos aparece `printscript-local` en New Relic.
+
 ## Errores
 
 Los errores del pedido (4xx) responden con Problem Details ([RFC 9457](https://www.rfc-editor.org/rfc/rfc9457)) y `Content-Type: application/problem+json`. **Los clientes tienen que leer `detail`.**
