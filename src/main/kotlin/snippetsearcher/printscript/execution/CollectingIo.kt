@@ -1,19 +1,25 @@
 package snippetsearcher.printscript.execution
 
 import org.printscript.interpreter.io.PrintScriptIO
+import java.util.Collections
 
 // Una instancia por ejecución: guarda estado del pedido y no se comparte.
+// Si la ejecución vence, outputs se lee desde otro thread mientras el intérprete puede seguir imprimiendo.
 class CollectingIo(
     inputs: List<String>,
+    private val maxOutputSize: Long,
 ) : PrintScriptIO {
     private val sent = inputs.size
     private val pending = ArrayDeque(inputs)
-    private val printed = mutableListOf<String>()
+    private val printed = Collections.synchronizedList(mutableListOf<String>())
+    private var printedSize = 0L
 
     val outputs: List<String>
-        get() = printed.toList()
+        get() = synchronized(printed) { printed.toList() }
 
     override fun print(text: String) {
+        printedSize += text.length
+        if (printedSize > maxOutputSize) throw OutputTooLargeException(maxOutputSize)
         printed += text
     }
 

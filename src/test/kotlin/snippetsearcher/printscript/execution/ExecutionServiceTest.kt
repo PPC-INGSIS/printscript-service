@@ -2,13 +2,18 @@ package snippetsearcher.printscript.execution
 
 import org.junit.jupiter.api.Test
 import org.printscript.common.Version
+import org.springframework.core.task.AsyncTaskExecutor
+import org.springframework.core.task.SimpleAsyncTaskExecutor
+import org.springframework.util.unit.DataSize
+import snippetsearcher.printscript.common.Limits
+import java.time.Duration
 import kotlin.test.assertEquals
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 class ExecutionServiceTest {
-    private val service = ExecutionService()
+    private val service = service(maxOutputSize = DataSize.ofMegabytes(1), timeout = Duration.ofSeconds(5))
 
     @Test
     fun `devuelve lo que imprimió el snippet`() {
@@ -73,6 +78,39 @@ class ExecutionServiceTest {
         assertEquals("La variable de entorno 'HOME' no está definida.", error.message)
         assertEquals(2, error.line)
     }
+
+    @Test
+    fun `si la salida pasa el máximo devuelve el error sin posición y lo impreso hasta ahí`() {
+        val service = service(maxOutputSize = DataSize.ofBytes(10), timeout = Duration.ofSeconds(5))
+
+        val response = service.execute("println(12345);\nprintln(67890);\nprintln(1);", Version.V10, emptyList())
+
+        assertEquals(listOf("12345", "67890"), response.outputs)
+        val error = assertNotNull(response.error)
+        assertEquals("La salida superó el máximo de 10 caracteres", error.message)
+        assertNull(error.line)
+        assertNull(error.column)
+    }
+
+    @Test
+    fun `si la ejecución pasa el tiempo límite devuelve el error sin posición`() {
+        // Nunca corre la tarea: el timeout vence siempre, sin depender de lo rápida que sea la máquina
+        val neverRuns = AsyncTaskExecutor { }
+        val service = service(DataSize.ofMegabytes(1), Duration.ofMillis(100), neverRuns)
+
+        val response = service.execute("println(1);", Version.V10, emptyList())
+
+        val error = assertNotNull(response.error)
+        assertEquals("La ejecución superó el tiempo límite de 100 ms", error.message)
+        assertNull(error.line)
+        assertNull(error.column)
+    }
+
+    private fun service(
+        maxOutputSize: DataSize,
+        timeout: Duration,
+        executor: AsyncTaskExecutor = SimpleAsyncTaskExecutor(),
+    ) = ExecutionService(Limits(DataSize.ofKilobytes(64), maxOutputSize, timeout), executor)
 
     private fun execute(
         name: String,

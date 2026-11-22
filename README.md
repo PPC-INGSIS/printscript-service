@@ -64,6 +64,32 @@ Los errores del pedido (4xx) responden con Problem Details ([RFC 9457](https://w
 - **Los 4xx que arma Spring no traen `message`:** falta un campo o un parámetro, JSON mal formado, `415`.
 - **`type` no viene en el body.** Según el RFC, si falta equivale a `about:blank`.
 
+Si el código supera el tamaño máximo (ver [Límites](#límites)), los cuatro endpoints que lo reciben responden `413` con el mismo formato. Es determinístico: reintentar el mismo código da lo mismo.
+
+```json
+{
+  "title": "Payload Too Large",
+  "status": 413,
+  "detail": "El código supera el tamaño máximo de 64 KB",
+  "instance": "/execute",
+  "message": "El código supera el tamaño máximo de 64 KB"
+}
+```
+
+## Límites
+
+Acotan cuánto código procesa el servicio y cuánto produce `/execute`. Los números de los mensajes salen de estas properties.
+
+| Property | Default | Qué limita | Pasarse responde |
+|---|---|---|---|
+| `printscript.limits.max-code-size` | `64KB` | Bytes UTF-8 de `code` en `/validate`, `/execute`, `/format` y `/lint` | `413` |
+| `printscript.limits.max-output-size` | `1MB` | Caracteres impresos por `/execute` (1 MB = 1048576 caracteres) | `200` con `error` |
+| `printscript.limits.execution-timeout` | `5s` | Duración de `/execute` | `200` con `error` |
+
+- **El tamaño de `code` se chequea después de leer el body.** En `/execute`, `/format` y `/lint`, Jackson ya armó el `String` cuando llega el chequeo: el límite acota lo que se procesa, no lo que se recibe. `/validate` cuenta los bytes mientras lee el stream y corta apenas pasa el máximo.
+- **El timeout no libera la memoria del thread.** El intérprete no chequea interrupciones: después de responder, el thread de la ejecución puede seguir corriendo hasta terminar. Protege la latencia, no la memoria.
+- **Las ejecuciones vencidas siguen ocupando el pool.** `/execute` corre en el `applicationTaskExecutor` de Spring Boot: 8 threads y cola sin límite. Si 8 ejecuciones vencidas siguen corriendo a la vez, los pedidos nuevos esperan en la cola, y esa espera cuenta para su timeout. Sin loops y con 64 KB de código, solo puede tardar un snippet que crece exponencialmente, y ese se queda sin memoria en segundos, así que el pool se libera rápido.
+
 ## Endpoints
 
 ### `POST /validate?version={id}`
@@ -88,6 +114,7 @@ curl -X POST "localhost:8082/validate?version=1.1" \
 | `200` | Siempre que el pedido esté bien, **también si el código es inválido** | `{"errors":[...]}` |
 | `400` | La versión no existe | Problem Details (ver [Errores](#errores)) |
 | `400` | Falta `version` o el body está vacío | Problem Details de Spring |
+| `413` | El código supera el tamaño máximo | Problem Details (ver [Errores](#errores)) |
 | `415` | El `Content-Type` no es `text/plain` | Problem Details de Spring |
 
 Lista vacía = el código es válido. Cada error trae dónde empieza:
@@ -121,6 +148,7 @@ curl -X POST localhost:8082/execute \
 | `200` | Siempre que el pedido esté bien, **también si la ejecución falla** | `{"outputs":[...],"error":...}` |
 | `400` | La versión no existe | Problem Details (ver [Errores](#errores)) |
 | `400` | Falta un campo del body | Problem Details de Spring |
+| `413` | El código supera el tamaño máximo | Problem Details (ver [Errores](#errores)) |
 
 Si terminó bien, `error` es `null`:
 
@@ -128,7 +156,7 @@ Si terminó bien, `error` es `null`:
 {"outputs":["Nombre: ","Hola Juan"],"error":null}
 ```
 
-Un error de sintaxis, uno de ejecución o la falta de inputs **no** son errores del pedido: responden `200` con el error y lo impreso hasta ese momento.
+Un error de sintaxis, uno de ejecución, la falta de inputs o pasarse de la salida o del tiempo límite **no** son errores del pedido: responden `200` con el error y lo impreso hasta ese momento.
 
 ```json
 {"outputs":["antes"],"error":{"message":"...","line":2,"column":9}}
@@ -139,6 +167,8 @@ A tener en cuenta:
 - **El prompt de `readInput` sale como output.** La librería lo imprime antes de leer, así que `readInput("Nombre: ")` agrega `"Nombre: "` a `outputs`.
 - **`readEnv` nunca lee las variables del servidor.** Cualquier `readEnv` corta la ejecución con `La variable de entorno 'X' no está definida.` y su posición.
 - **Si faltan inputs, el error viene sin posición.** `line` y `column` llegan en `null`: la librería no le pasa la posición a quien da los inputs, y cuando el error llega al servicio ya no hay forma de saber en qué sentencia estaba. El mensaje dice cuántos se enviaron: `Faltan inputs: el snippet pidió más de los que se enviaron (se envió 1)`.
+- **Si la salida pasa el máximo, la ejecución se corta.** El error viene sin posición: `La salida superó el máximo de 1048576 caracteres`. `outputs` trae lo impreso hasta ahí, sin el texto que lo pasó. Los prompts de `readInput` también cuentan.
+- **Si la ejecución pasa el tiempo límite, se corta igual.** El error viene sin posición: `La ejecución superó el tiempo límite de 5 s`. `outputs` trae lo impreso hasta ese momento.
 
 ### `POST /format`
 
@@ -203,6 +233,7 @@ Las claves del archivo de configuración de la librería, que `/format` aceptaba
 | `400` | La versión no existe | Problem Details (ver [Errores](#errores)) |
 | `400` | Las reglas son inválidas | Problem Details con `rule` (ver abajo) |
 | `400` | Falta un campo del body | Problem Details de Spring |
+| `413` | El código supera el tamaño máximo | Problem Details (ver [Errores](#errores)) |
 
 Si terminó bien, `error` es `null`. `ignoredRules` siempre viene, vacía si no se ignoró nada:
 
@@ -296,6 +327,7 @@ Las claves del archivo de configuración de la librería, que `/lint` aceptaba a
 | `400` | La versión no existe | Problem Details (ver [Errores](#errores)) |
 | `400` | Las reglas son inválidas | Problem Details con `rule` (ver abajo) |
 | `400` | Falta un campo del body | Problem Details de Spring |
+| `413` | El código supera el tamaño máximo | Problem Details (ver [Errores](#errores)) |
 
 Lista vacía = sin violaciones. Cada violación trae la regla, dónde empieza y su severidad. `ignoredRules` siempre viene, vacía si no se ignoró nada:
 
