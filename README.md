@@ -78,7 +78,7 @@ Si el código supera el tamaño máximo (ver [Límites](#límites)), los cuatro 
 
 ## Límites
 
-Acotan lo que entra y lo que sale del servicio para que un snippet no pueda tirar la JVM. Los números de los mensajes salen de estas properties.
+Acotan cuánto código procesa el servicio y cuánto produce `/execute`. Los números de los mensajes salen de estas properties.
 
 | Property | Default | Qué limita | Pasarse responde |
 |---|---|---|---|
@@ -86,6 +86,7 @@ Acotan lo que entra y lo que sale del servicio para que un snippet no pueda tira
 | `printscript.limits.max-output-size` | `1MB` | Caracteres impresos por `/execute` (1 MB = 1048576 caracteres) | `200` con `error` |
 | `printscript.limits.execution-timeout` | `5s` | Duración de `/execute` | `200` con `error` |
 
+- **El tamaño de `code` se chequea después de leer el body.** En `/execute`, `/format` y `/lint`, Jackson ya armó el `String` cuando llega el chequeo: el límite acota lo que se procesa, no lo que se recibe. `/validate` cuenta los bytes mientras lee el stream y corta apenas pasa el máximo.
 - **El timeout no libera la memoria del thread.** El intérprete no chequea interrupciones: después de responder, el thread de la ejecución puede seguir corriendo hasta terminar. Protege la latencia, no la memoria.
 - **Las ejecuciones vencidas siguen ocupando el pool.** `/execute` corre en el `applicationTaskExecutor` de Spring Boot: 8 threads y cola sin límite. Si 8 ejecuciones vencidas siguen corriendo a la vez, los pedidos nuevos esperan en la cola, y esa espera cuenta para su timeout. Sin loops y con 64 KB de código, solo puede tardar un snippet que crece exponencialmente, y ese se queda sin memoria en segundos, así que el pool se libera rápido.
 

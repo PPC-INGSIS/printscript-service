@@ -16,7 +16,11 @@ data class Limits(
         get() = "El código supera el tamaño máximo de ${maxCodeSize.describe()}"
 
     fun rejectLargeCode(code: String): ResponseEntity<ProblemDetail>? =
-        if (code.toByteArray().size > maxCodeSize.toBytes()) payloadTooLarge(codeTooLargeMessage) else null
+        if (code.toByteArray(Charsets.UTF_8).size > maxCodeSize.toBytes()) {
+            payloadTooLarge(codeTooLargeMessage)
+        } else {
+            null
+        }
 }
 
 fun DataSize.describe(): String =
