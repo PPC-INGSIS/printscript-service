@@ -1,0 +1,10 @@
+common:
+  log_file_name: STDOUT
+  distributed_tracing:
+    enabled: true
+  application_logging:
+    enabled: true
+    forwarding:
+      enabled: true
+  error_collector:
+    expected_status_codes: 400,413

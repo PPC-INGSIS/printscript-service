@@ -19,6 +19,20 @@ repositories {
     }
 }
 
+val newRelicAgent = configurations.create("newRelicAgent")
+
 dependencies {
     implementation("printscript:runner:1.1.1")
+    newRelicAgent("com.newrelic.agent.java:newrelic-agent:9.5.0")
+}
+
+val copyNewRelicAgent =
+    tasks.register<Copy>("copyNewRelicAgent") {
+        from(newRelicAgent)
+        into(layout.buildDirectory.dir("newrelic"))
+        rename { "newrelic.jar" }
+    }
+
+tasks.named("bootJar") {
+    dependsOn(copyNewRelicAgent)
 }
