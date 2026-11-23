@@ -55,17 +55,6 @@ class LintingControllerTest(
     }
 
     @Test
-    fun `con claves deprecadas responde 200 con las mismas violaciones y el header Deprecation`() {
-        val rules = mapOf("identifier_format" to "camel case", "mandatory-variable-or-literal-in-println" to true)
-
-        lint("40-para-lintear.ps", "1.1", rules).andExpect {
-            status { isOk() }
-            header { string("Deprecation", "@1793836800") }
-            content { json(violations, JsonCompareMode.STRICT) }
-        }
-    }
-
-    @Test
     fun `read-input-argument en un snippet 1_0 se ignora y se informa en ignoredRules`() {
         lint("10-hola-mundo.ps", "1.0", mapOf("read-input-argument" to true)).andExpect {
             status { isOk() }
@@ -79,7 +68,6 @@ class LintingControllerTest(
             status { isBadRequest() }
             content { contentType(MediaType.APPLICATION_PROBLEM_JSON) }
             jsonPath("$.detail") { value("La versión '2.0' no existe. Versiones disponibles: 1.0, 1.1") }
-            jsonPath("$.message") { value("La versión '2.0' no existe. Versiones disponibles: 1.0, 1.1") }
         }
     }
 
@@ -89,8 +77,17 @@ class LintingControllerTest(
             status { isBadRequest() }
             content { contentType(MediaType.APPLICATION_PROBLEM_JSON) }
             jsonPath("$.detail") { value("Regla de lint desconocida: 'no-existe'") }
-            jsonPath("$.message") { value("Regla de lint desconocida: 'no-existe'") }
             jsonPath("$.rule") { value("no-existe") }
+        }
+    }
+
+    @Test
+    fun `una clave vieja de la librería responde 400 como regla desconocida`() {
+        lint("40-para-lintear.ps", "1.1", mapOf("identifier_format" to "camel case")).andExpect {
+            status { isBadRequest() }
+            content { contentType(MediaType.APPLICATION_PROBLEM_JSON) }
+            jsonPath("$.detail") { value("Regla de lint desconocida: 'identifier_format'") }
+            jsonPath("$.rule") { value("identifier_format") }
         }
     }
 
@@ -102,7 +99,6 @@ class LintingControllerTest(
             status { isBadRequest() }
             content { contentType(MediaType.APPLICATION_PROBLEM_JSON) }
             jsonPath("$.detail") { value(message) }
-            jsonPath("$.message") { value(message) }
             jsonPath("$.rule") { value("identifier-naming") }
         }
     }
@@ -124,7 +120,6 @@ class LintingControllerTest(
             content { contentType(MediaType.APPLICATION_PROBLEM_JSON) }
             jsonPath("$.title") { value("Payload Too Large") }
             jsonPath("$.detail") { value("El código supera el tamaño máximo de 64 KB") }
-            jsonPath("$.message") { value("El código supera el tamaño máximo de 64 KB") }
         }
     }
 

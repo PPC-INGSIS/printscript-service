@@ -47,43 +47,6 @@ class FormatRulesResolutionTest {
     }
 
     @Test
-    fun `cada clave deprecada produce lo mismo que su regla`() {
-        val cases =
-            listOf(
-                ("enforce-spacing-before-colon-in-declaration" to true) to ("space-before-colon" to "always"),
-                ("enforce-spacing-before-colon-in-declaration" to false) to ("space-before-colon" to "never"),
-                ("enforce-spacing-after-colon-in-declaration" to true) to ("space-after-colon" to "always"),
-                ("enforce-spacing-after-colon-in-declaration" to false) to ("space-after-colon" to "never"),
-                ("enforce-spacing-around-equals" to true) to ("space-around-assignment" to "always"),
-                ("enforce-spacing-around-equals" to false) to ("space-around-assignment" to "never"),
-                ("enforce-no-spacing-around-equals" to true) to ("space-around-assignment" to "never"),
-                ("enforce-no-spacing-around-equals" to false) to ("space-around-assignment" to "always"),
-                ("mandatory-line-break-after-statement" to true) to ("line-break-after-statement" to true),
-                ("mandatory-line-break-after-statement" to false) to null,
-                ("mandatory-space-surrounding-operations" to true) to ("space-around-operators" to true),
-                ("mandatory-space-surrounding-operations" to false) to null,
-                ("mandatory-single-space-separation" to true) to ("single-space-separation" to true),
-                ("mandatory-single-space-separation" to false) to null,
-                ("if-brace-same-line" to true) to ("if-brace-position" to "same-line"),
-                ("if-brace-same-line" to false) to null,
-                ("if-brace-below-line" to true) to ("if-brace-position" to "next-line"),
-                ("if-brace-below-line" to false) to null,
-                ("line-breaks-after-println" to 1) to ("blank-lines-after-println" to 1),
-                ("indent-inside-if" to 4) to ("if-indent" to 4),
-            )
-
-        for ((deprecated, rule) in cases) {
-            val expected = resolve(listOfNotNull(rule).toMap()) as RulesResolution.Supported<FormatterConfig>
-
-            assertEquals(
-                expected.copy(deprecatedKeys = listOf(deprecated.first)),
-                resolve(mapOf(deprecated)),
-                "$deprecated",
-            )
-        }
-    }
-
-    @Test
     fun `un flag en false equivale a no mandarlo`() {
         val rules = mapOf("line-break-after-statement" to false)
 
@@ -109,8 +72,6 @@ class FormatRulesResolutionTest {
                 ("if-indent" to "4") to "La regla 'if-indent' espera un número entero",
                 ("if-indent" to 4.5) to "La regla 'if-indent' espera un número entero",
                 ("line-break-after-statement" to "true") to "La regla 'line-break-after-statement' solo acepta true",
-                ("if-brace-same-line" to "sí") to "La regla 'if-brace-same-line' tiene que ser true o false",
-                ("indent-inside-if" to true) to "La regla 'indent-inside-if' espera un número entero",
             )
 
         for ((rule, message) in cases) {
@@ -125,7 +86,6 @@ class FormatRulesResolutionTest {
                 ("blank-lines-after-println" to 3) to
                     "La regla 'blank-lines-after-println' acepta valores entre 0 y 2, se recibió 3",
                 ("if-indent" to 9) to "La regla 'if-indent' acepta valores entre 0 y 8, se recibió 9",
-                ("indent-inside-if" to -1) to "La regla 'indent-inside-if' acepta valores entre 0 y 8, se recibió -1",
                 ("if-indent" to 3_000_000_000L) to
                     "La regla 'if-indent' acepta valores entre 0 y 8, se recibió 3000000000",
                 ("if-indent" to BigInteger("10000000000000000000")) to
@@ -138,54 +98,13 @@ class FormatRulesResolutionTest {
     }
 
     @Test
-    fun `dos claves que definen la misma regla con valores distintos son inválidas`() {
-        val rules = mapOf("enforce-spacing-around-equals" to true, "enforce-no-spacing-around-equals" to true)
-
-        assertEquals(
-            invalid(
-                "'enforce-spacing-around-equals' y 'enforce-no-spacing-around-equals' " +
-                    "definen 'space-around-assignment' con valores distintos",
-                "space-around-assignment",
-            ),
-            resolve(rules),
-        )
-    }
-
-    @Test
-    fun `dos claves que definen la misma regla con el mismo valor no son un conflicto`() {
-        val rules = mapOf("enforce-spacing-around-equals" to true, "space-around-assignment" to "always")
-
-        assertEquals(
-            supported(
-                FormatterConfig(spaceAroundAssignment = Spacing.SINGLE),
-                deprecatedKeys = listOf("enforce-spacing-around-equals"),
-            ),
-            resolve(rules),
-        )
-    }
-
-    @Test
-    fun `un flag en false no choca con otra clave que lo activa`() {
-        val rules = mapOf("line-break-after-statement" to false, "mandatory-line-break-after-statement" to true)
-
-        assertEquals(
-            supported(
-                FormatterConfig(lineBreakAfterStatement = true),
-                deprecatedKeys = listOf("mandatory-line-break-after-statement"),
-            ),
-            resolve(rules),
-        )
-    }
-
-    @Test
     fun `una regla de una versión posterior se ignora y se informa`() {
-        val rules = mapOf("if-indent" to 4, "indent-inside-if" to 4, "space-before-colon" to "always")
+        val rules = mapOf("if-indent" to 4, "space-before-colon" to "always")
 
         assertEquals(
             supported(
                 FormatterConfig(spaceBeforeColon = Spacing.SINGLE),
                 ignoredRules = listOf("if-indent"),
-                deprecatedKeys = listOf("indent-inside-if"),
             ),
             resolve(rules, Version.V10),
         )
@@ -197,15 +116,6 @@ class FormatRulesResolutionTest {
             invalid("La regla 'if-indent' acepta valores entre 0 y 8, se recibió 12", "if-indent"),
             resolve(mapOf("if-indent" to 12), Version.V10),
         )
-    }
-
-    @Test
-    fun `informa solo las claves deprecadas usadas`() {
-        val rules = mapOf("if-brace-same-line" to false, "if-indent" to 2, "line-breaks-after-println" to 0)
-
-        val resolution = resolve(rules) as RulesResolution.Supported<FormatterConfig>
-
-        assertEquals(listOf("if-brace-same-line", "line-breaks-after-println"), resolution.deprecatedKeys)
     }
 
     @Test
@@ -234,6 +144,5 @@ class FormatRulesResolutionTest {
     private fun supported(
         config: FormatterConfig,
         ignoredRules: List<String> = emptyList(),
-        deprecatedKeys: List<String> = emptyList(),
-    ) = RulesResolution.Supported(config, ignoredRules, deprecatedKeys)
+    ) = RulesResolution.Supported(config, ignoredRules)
 }
