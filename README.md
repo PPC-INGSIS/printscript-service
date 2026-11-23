@@ -81,13 +81,10 @@ Los errores del pedido (4xx) responden con Problem Details ([RFC 9457](https://w
   "title": "Bad Request",
   "status": 400,
   "detail": "La versión '2.0' no existe. Versiones disponibles: 1.0, 1.1",
-  "instance": "/format",
-  "message": "La versión '2.0' no existe. Versiones disponibles: 1.0, 1.1"
+  "instance": "/format"
 }
 ```
 
-- **`message` está deprecado y se va a quitar.** Trae el mismo texto que `detail`.
-- **Los 4xx que arma Spring no traen `message`:** falta un campo o un parámetro, JSON mal formado, `415`.
 - **`type` no viene en el body.** Según el RFC, si falta equivale a `about:blank`.
 
 Si el código supera el tamaño máximo (ver [Límites](#límites)), los cuatro endpoints que lo reciben responden `413` con el mismo formato. Es determinístico: reintentar el mismo código da lo mismo.
@@ -97,8 +94,7 @@ Si el código supera el tamaño máximo (ver [Límites](#límites)), los cuatro 
   "title": "Payload Too Large",
   "status": 413,
   "detail": "El código supera el tamaño máximo de 64 KB",
-  "instance": "/execute",
-  "message": "El código supera el tamaño máximo de 64 KB"
+  "instance": "/execute"
 }
 ```
 
@@ -230,27 +226,6 @@ curl -X POST localhost:8082/format \
 - **Las reglas de valor `true` son flags:** `true` las activa y `false` equivale a no mandarlas.
 - **Las reglas de una versión posterior a la del snippet se ignoran:** `if-indent` en un snippet `1.0` no es un error, no se aplica y su id vuelve en `ignoredRules`. El valor se valida igual.
 
-**Claves deprecadas**
-
-Las claves del archivo de configuración de la librería, que `/format` aceptaba antes, se siguen aceptando como alias. **Se van a quitar:** hay que pasar a los ids de arriba.
-
-| Clave vieja | Con `true` | Con `false` |
-|---|---|---|
-| `enforce-spacing-before-colon-in-declaration` | `space-before-colon: "always"` | `space-before-colon: "never"` |
-| `enforce-spacing-after-colon-in-declaration` | `space-after-colon: "always"` | `space-after-colon: "never"` |
-| `enforce-spacing-around-equals` | `space-around-assignment: "always"` | `space-around-assignment: "never"` |
-| `enforce-no-spacing-around-equals` | `space-around-assignment: "never"` | `space-around-assignment: "always"` |
-| `mandatory-line-break-after-statement` | `line-break-after-statement: true` | ausente |
-| `mandatory-space-surrounding-operations` | `space-around-operators: true` | ausente |
-| `mandatory-single-space-separation` | `single-space-separation: true` | ausente |
-| `if-brace-same-line` | `if-brace-position: "same-line"` | ausente |
-| `if-brace-below-line` | `if-brace-position: "next-line"` | ausente |
-| `line-breaks-after-println: n` | `blank-lines-after-println: n` | |
-| `indent-inside-if: n` | `if-indent: n` | |
-
-- **Si el pedido usa alguna, la respuesta `200` trae el header `Deprecation: @1793836800`** ([RFC 9745](https://www.rfc-editor.org/rfc/rfc9745)): deprecadas desde el 2026-11-05.
-- **Dos claves que definen la misma regla con valores distintos son un `400`,** por ejemplo `enforce-spacing-around-equals` y `enforce-no-spacing-around-equals` en `true`. Antes ganaba la última. Con el mismo valor no hay error.
-
 **Respuestas**
 
 | Status | Cuándo | Body |
@@ -273,7 +248,7 @@ Un error en el código **no** es un error del pedido: responde `200` con el erro
 {"formatted":null,"error":{"message":"...","line":2,"column":19},"ignoredRules":[]}
 ```
 
-Las reglas inválidas traen en `rule` el id (o la clave vieja) que falló:
+Las reglas inválidas traen en `rule` el id que falló:
 
 ```json
 {
@@ -281,7 +256,6 @@ Las reglas inválidas traen en `rule` el id (o la clave vieja) que falló:
   "status": 400,
   "detail": "La regla 'if-indent' acepta valores entre 0 y 8, se recibió 12",
   "instance": "/format",
-  "message": "La regla 'if-indent' acepta valores entre 0 y 8, se recibió 12",
   "rule": "if-indent"
 }
 ```
@@ -291,8 +265,6 @@ Las reglas inválidas traen en `rule` el id (o la clave vieja) que falló:
 - Algo que no es un entero donde va un entero: `La regla 'if-indent' espera un número entero`
 - Un entero fuera de rango: `La regla 'if-indent' acepta valores entre 0 y 8, se recibió 12`
 - Algo que no es booleano en un flag: `La regla 'line-break-after-statement' solo acepta true`
-- Algo que no es booleano en una clave vieja: `La regla 'if-brace-same-line' tiene que ser true o false`
-- Dos claves con valores distintos para la misma regla: `'enforce-spacing-around-equals' y 'enforce-no-spacing-around-equals' definen 'space-around-assignment' con valores distintos`. Acá `rule` es el id nuevo.
 
 A tener en cuenta:
 
@@ -329,22 +301,6 @@ Los ids son los mismos `rule` que traen las violaciones.
 - **Las reglas de valor `true` son flags:** `true` las activa y `false` equivale a no mandarlas.
 - **Las reglas de una versión posterior a la del snippet se ignoran:** `read-input-argument` en un snippet `1.0` no es un error, no se aplica y su id vuelve en `ignoredRules`. El valor se valida igual.
 
-**Claves deprecadas**
-
-Las claves del archivo de configuración de la librería, que `/lint` aceptaba antes, se siguen aceptando como alias. **Se van a quitar:** hay que pasar a los ids de arriba.
-
-| Clave vieja | Valor | Se traduce a |
-|---|---|---|
-| `identifier_format` | `"camel case"` | `identifier-naming: "camel-case"` |
-| `identifier_format` | `"snake case"` | `identifier-naming: "snake-case"` |
-| `mandatory-variable-or-literal-in-println` | `true` | `println-argument: true` |
-| `mandatory-variable-or-literal-in-println` | `false` | ausente |
-| `mandatory-variable-or-literal-in-readInput` | `true` | `read-input-argument: true` |
-| `mandatory-variable-or-literal-in-readInput` | `false` | ausente |
-
-- **Si el pedido usa alguna, la respuesta `200` trae el header `Deprecation: @1793836800`** ([RFC 9745](https://www.rfc-editor.org/rfc/rfc9745)), el mismo que `/format`.
-- **Dos claves que definen la misma regla con valores distintos son un `400`,** por ejemplo `identifier_format: "snake case"` e `identifier-naming: "camel-case"`. Con el mismo valor no hay error.
-
 **Respuestas**
 
 | Status | Cuándo | Body |
@@ -370,7 +326,7 @@ Lista vacía = sin violaciones. Cada violación trae la regla, dónde empieza y 
 
 `line` y `column` son **base 1**, como en `/validate`.
 
-Las reglas inválidas traen en `rule` el id (o la clave vieja) que falló:
+Las reglas inválidas traen en `rule` el id que falló:
 
 ```json
 {
@@ -378,17 +334,13 @@ Las reglas inválidas traen en `rule` el id (o la clave vieja) que falló:
   "status": 400,
   "detail": "La regla 'identifier-naming' tiene que ser 'camel-case' o 'snake-case'",
   "instance": "/lint",
-  "message": "La regla 'identifier-naming' tiene que ser 'camel-case' o 'snake-case'",
   "rule": "identifier-naming"
 }
 ```
 
 - Un id que no existe: `Regla de lint desconocida: 'no-existe'`
 - Una convención que no existe: `La regla 'identifier-naming' tiene que ser 'camel-case' o 'snake-case'`
-- Una convención que no existe en la clave vieja: `La regla 'identifier_format' tiene que ser 'camel case' o 'snake case'`
 - Algo que no es booleano en un flag: `La regla 'println-argument' solo acepta true`
-- Algo que no es booleano en una clave vieja: `La regla 'mandatory-variable-or-literal-in-println' tiene que ser true o false`
-- Dos claves con valores distintos para la misma regla: `'identifier_format' y 'identifier-naming' definen 'identifier-naming' con valores distintos`. Acá `rule` es el id nuevo.
 
 A tener en cuenta:
 
@@ -453,7 +405,7 @@ curl "localhost:8082/rules/format?version=1.1"
 - **`version` es la versión usada:** la pedida, o la última si no se mandó.
 - **Solo vienen las reglas de esa versión** (`since` menor o igual). Con `1.0`, `/rules/format` no trae `if-brace-position` ni `if-indent`, y `/rules/lint` no trae `read-input-argument`.
 - **El orden es el de las tablas de reglas de `/format` y `/lint`.**
-- **Solo vienen los ids nuevos:** las claves deprecadas no aparecen.
+- **Solo vienen los ids de las reglas:** las claves de la librería no aparecen.
 - **`description` está en castellano y puede cambiar.** El que identifica a la regla es `id`.
 
 `schema` es [JSON Schema](https://json-schema.org/) y depende del tipo de la regla:
