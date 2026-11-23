@@ -35,7 +35,7 @@ fun <C> resolveRules(
     val (applied, ignored) = entries.partition { it.rule.since <= version }
     return RulesResolution.Supported(
         config = applied.fold(ruleSet.empty) { config, entry -> entry.setting.applyTo(config) },
-        ignoredRules = ignored.map { it.rule.id }.distinct(),
+        ignoredRules = ignored.map { it.rule.id },
     )
 }
 
