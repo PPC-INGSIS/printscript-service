@@ -1,11 +1,8 @@
 package snippetsearcher.printscript.formatting
 
 import org.junit.jupiter.api.Test
-import org.junit.jupiter.api.extension.ExtendWith
 import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.boot.context.properties.EnableConfigurationProperties
-import org.springframework.boot.test.system.CapturedOutput
-import org.springframework.boot.test.system.OutputCaptureExtension
 import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest
 import org.springframework.context.annotation.Import
 import org.springframework.http.MediaType
@@ -14,7 +11,6 @@ import org.springframework.test.web.servlet.MockMvc
 import org.springframework.test.web.servlet.post
 import snippetsearcher.printscript.common.Limits
 import tools.jackson.databind.json.JsonMapper
-import kotlin.test.assertTrue
 
 private const val MAX_CODE_SIZE = 64 * 1024
 
@@ -39,31 +35,6 @@ class FormattingControllerTest(
             header { doesNotExist("Deprecation") }
             content { json(formattedWithIfIndent, JsonCompareMode.STRICT) }
         }
-    }
-
-    @Test
-    fun `con claves deprecadas responde 200 con el mismo formateado y el header Deprecation`() {
-        val rules = mapOf("enforce-spacing-around-equals" to true, "indent-inside-if" to 4)
-
-        format("30-para-formatear.ps", "1.1", rules).andExpect {
-            status { isOk() }
-            header { string("Deprecation", "@1793836800") }
-            content { json(formattedWithIfIndent, JsonCompareMode.STRICT) }
-        }
-    }
-
-    @Test
-    @ExtendWith(OutputCaptureExtension::class)
-    fun `con claves deprecadas loguea un WARN con las claves usadas`(output: CapturedOutput) {
-        val rules = mapOf("enforce-spacing-around-equals" to true, "if-indent" to 4)
-
-        format("30-para-formatear.ps", "1.1", rules).andExpect { status { isOk() } }
-
-        assertTrue(
-            output.out.lines().any {
-                "WARN" in it && "/format recibió claves deprecadas: [enforce-spacing-around-equals]" in it
-            },
-        )
     }
 
     @Test
@@ -92,7 +63,6 @@ class FormattingControllerTest(
             status { isBadRequest() }
             content { contentType(MediaType.APPLICATION_PROBLEM_JSON) }
             jsonPath("$.detail") { value("La versión '2.0' no existe. Versiones disponibles: 1.0, 1.1") }
-            jsonPath("$.message") { value("La versión '2.0' no existe. Versiones disponibles: 1.0, 1.1") }
         }
     }
 
@@ -102,8 +72,17 @@ class FormattingControllerTest(
             status { isBadRequest() }
             content { contentType(MediaType.APPLICATION_PROBLEM_JSON) }
             jsonPath("$.detail") { value("Regla de formato desconocida: 'no-existe'") }
-            jsonPath("$.message") { value("Regla de formato desconocida: 'no-existe'") }
             jsonPath("$.rule") { value("no-existe") }
+        }
+    }
+
+    @Test
+    fun `una clave vieja de la librería responde 400 como regla desconocida`() {
+        format("30-para-formatear.ps", "1.1", mapOf("enforce-spacing-around-equals" to true)).andExpect {
+            status { isBadRequest() }
+            content { contentType(MediaType.APPLICATION_PROBLEM_JSON) }
+            jsonPath("$.detail") { value("Regla de formato desconocida: 'enforce-spacing-around-equals'") }
+            jsonPath("$.rule") { value("enforce-spacing-around-equals") }
         }
     }
 
@@ -113,7 +92,6 @@ class FormattingControllerTest(
             status { isBadRequest() }
             content { contentType(MediaType.APPLICATION_PROBLEM_JSON) }
             jsonPath("$.detail") { value("La regla 'if-indent' espera un número entero") }
-            jsonPath("$.message") { value("La regla 'if-indent' espera un número entero") }
             jsonPath("$.rule") { value("if-indent") }
         }
     }
@@ -124,22 +102,6 @@ class FormattingControllerTest(
             status { isBadRequest() }
             jsonPath("$.detail") { value("La regla 'if-indent' acepta valores entre 0 y 8, se recibió 3000000000") }
             jsonPath("$.rule") { value("if-indent") }
-        }
-    }
-
-    @Test
-    fun `dos claves con valores distintos para la misma regla responden 400 con el motivo`() {
-        val rules = mapOf("enforce-spacing-around-equals" to true, "enforce-no-spacing-around-equals" to true)
-        val detail =
-            "'enforce-spacing-around-equals' y 'enforce-no-spacing-around-equals' " +
-                "definen 'space-around-assignment' con valores distintos"
-
-        format("30-para-formatear.ps", "1.1", rules).andExpect {
-            status { isBadRequest() }
-            content { contentType(MediaType.APPLICATION_PROBLEM_JSON) }
-            jsonPath("$.detail") { value(detail) }
-            jsonPath("$.message") { value(detail) }
-            jsonPath("$.rule") { value("space-around-assignment") }
         }
     }
 
@@ -160,7 +122,6 @@ class FormattingControllerTest(
             content { contentType(MediaType.APPLICATION_PROBLEM_JSON) }
             jsonPath("$.title") { value("Payload Too Large") }
             jsonPath("$.detail") { value("El código supera el tamaño máximo de 64 KB") }
-            jsonPath("$.message") { value("El código supera el tamaño máximo de 64 KB") }
         }
     }
 

@@ -9,7 +9,6 @@ import snippetsearcher.printscript.common.Limits
 import snippetsearcher.printscript.common.RulesResolution
 import snippetsearcher.printscript.common.VersionResolution
 import snippetsearcher.printscript.common.badRequest
-import snippetsearcher.printscript.common.okWithDeprecation
 import snippetsearcher.printscript.common.resolveRules
 import snippetsearcher.printscript.common.resolveVersion
 
@@ -33,7 +32,7 @@ class FormattingController(
                             formattingService
                                 .format(request.code, version.version, rules.config)
                                 .copy(ignoredRules = rules.ignoredRules)
-                        okWithDeprecation("/format", response, rules.deprecatedKeys)
+                        ResponseEntity.ok(response)
                     }
                 }
         }
