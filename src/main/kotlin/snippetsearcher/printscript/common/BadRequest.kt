@@ -20,7 +20,5 @@ private fun problem(
     detail: String,
 ): ResponseEntity<ProblemDetail> {
     val problem = ProblemDetail.forStatusAndDetail(status, detail)
-    // `message` está deprecado: se quita cuando snippet-service lea `detail`
-    problem.setProperty("message", detail)
     return ResponseEntity.status(status).body(problem)
 }

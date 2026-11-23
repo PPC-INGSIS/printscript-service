@@ -53,7 +53,7 @@ class ValidationControllerTest(
             status { isBadRequest() }
             content { contentType(MediaType.APPLICATION_PROBLEM_JSON) }
             jsonPath("$.detail") { value("La versión '2.0' no existe. Versiones disponibles: 1.0, 1.1") }
-            jsonPath("$.message") { value("La versión '2.0' no existe. Versiones disponibles: 1.0, 1.1") }
+            jsonPath("$.message") { doesNotExist() }
         }
     }
 
@@ -78,7 +78,7 @@ class ValidationControllerTest(
             content { contentType(MediaType.APPLICATION_PROBLEM_JSON) }
             jsonPath("$.title") { value("Payload Too Large") }
             jsonPath("$.detail") { value("El código supera el tamaño máximo de 64 KB") }
-            jsonPath("$.message") { value("El código supera el tamaño máximo de 64 KB") }
+            jsonPath("$.message") { doesNotExist() }
         }
     }
 

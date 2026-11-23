@@ -97,7 +97,6 @@ class RulesControllerTest(
                 status { isBadRequest() }
                 content { contentType(MediaType.APPLICATION_PROBLEM_JSON) }
                 jsonPath("$.detail") { value("La versión '2.0' no existe. Versiones disponibles: 1.0, 1.1") }
-                jsonPath("$.message") { value("La versión '2.0' no existe. Versiones disponibles: 1.0, 1.1") }
             }
         }
     }
