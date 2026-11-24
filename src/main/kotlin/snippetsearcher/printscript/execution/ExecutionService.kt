@@ -1,15 +1,11 @@
 package snippetsearcher.printscript.execution
 
-import org.printscript.common.Result
 import org.printscript.common.Version
-import org.printscript.lexer.source.StringSourceReader
-import org.printscript.runner.ExecuteRunner
 import org.springframework.core.task.AsyncTaskExecutor
 import org.springframework.stereotype.Service
 import snippetsearcher.printscript.common.Limits
 import snippetsearcher.printscript.common.SourceError
 import snippetsearcher.printscript.common.describe
-import snippetsearcher.printscript.common.toSourceError
 import java.util.concurrent.Callable
 import java.util.concurrent.ExecutionException
 import java.util.concurrent.TimeUnit
@@ -37,7 +33,7 @@ class ExecutionService(
         version: Version,
         io: CollectingIo,
     ): SourceError? {
-        val future = executor.submit(Callable { run(code, version, io) })
+        val future = executor.submit(Callable { runSnippet(code, version, io) })
         return try {
             future.get(limits.executionTimeout.toMillis(), TimeUnit.MILLISECONDS)
         } catch (expected: TimeoutException) {
@@ -48,22 +44,4 @@ class ExecutionService(
             throw exception.cause ?: exception
         }
     }
-
-    private fun run(
-        code: String,
-        version: Version,
-        io: CollectingIo,
-    ): SourceError? =
-        try {
-            when (val result = ExecuteRunner(version, io).execute { StringSourceReader(code) }) {
-                is Result.Success -> null
-                is Result.Failure -> result.error.toSourceError()
-            }
-        } catch (exception: MissingInputException) {
-            // Sin posición: read no recibe el rango de la sentencia y ExecuteRunner no atrapa
-            // la excepción, así que cuando llega acá ya no hay forma de saber dónde estaba
-            SourceError(exception.message.orEmpty(), line = null, column = null)
-        } catch (exception: OutputTooLargeException) {
-            SourceError(exception.message.orEmpty(), line = null, column = null)
-        }
 }
