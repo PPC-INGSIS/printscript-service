@@ -3,6 +3,7 @@ package snippetsearcher.printscript.execution
 import org.junit.jupiter.api.Test
 import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.boot.context.properties.EnableConfigurationProperties
+import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc
 import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest
 import org.springframework.context.annotation.Import
 import org.springframework.http.MediaType
@@ -16,6 +17,8 @@ private const val MAX_CODE_SIZE = 64 * 1024
 
 // Con el service real: solo depende de los límites y del executor, y así se prueba la librería de punta a punta
 @WebMvcTest(ExecutionController::class)
+// Sin los filtros de seguridad: este test prueba el controller. La seguridad está en SecurityConfigurationTest
+@AutoConfigureMockMvc(addFilters = false)
 @EnableConfigurationProperties(Limits::class)
 @Import(ExecutionService::class)
 class ExecutionControllerTest(

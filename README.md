@@ -24,6 +24,8 @@ No necesita Docker.
 
 ## Correrlo localmente
 
+Necesita las variables de Auth0: copiá `.env.example` como `.env` y completalo con los mismos valores que el `.env` de snippet-service.
+
 ```bash
 ./gradlew bootRun
 ```
@@ -111,6 +113,20 @@ Acotan cuánto código procesa el servicio y cuánto produce `/execute`. Los nú
 - **El tamaño de `code` se chequea después de leer el body.** En `/execute`, `/format` y `/lint`, Jackson ya armó el `String` cuando llega el chequeo: el límite acota lo que se procesa, no lo que se recibe. `/validate` cuenta los bytes mientras lee el stream y corta apenas pasa el máximo.
 - **El timeout no libera la memoria del thread.** El intérprete no chequea interrupciones: después de responder, el thread de la ejecución puede seguir corriendo hasta terminar. Protege la latencia, no la memoria.
 - **Las ejecuciones vencidas siguen ocupando el pool.** `/execute` corre en el `applicationTaskExecutor` de Spring Boot: 8 threads y cola sin límite. Si 8 ejecuciones vencidas siguen corriendo a la vez, los pedidos nuevos esperan en la cola, y esa espera cuenta para su timeout. Sin loops y con 64 KB de código, solo puede tardar un snippet que crece exponencialmente, y ese se queda sin memoria en segundos, así que el pool se libera rápido.
+
+## Autenticación
+
+Todos los endpoints, salvo `/actuator/health`, exigen un token de Auth0 con el scope `read:snippets` (presentación de Auth0, diap. 48: "validar el token en cada servicio" y "chequear el scope"):
+
+| Pedido | Respuesta |
+|---|---|
+| Sin token, o con un token inválido o vencido | `401` |
+| Con un token válido sin `read:snippets` | `403` |
+| Con un token válido con `read:snippets` | Lo que corresponda al endpoint |
+
+Es `read:snippets` en los cuatro porque PrintScript no guarda ni modifica nada: procesa el código que recibe. La escritura la chequea Snippets con `write:snippets`.
+
+Snippets reenvía el token del usuario en cada llamada. Para probar a mano, sacá un token como se explica en el README de snippet-service y agregá `-H "Authorization: Bearer $TOKEN"` a los `curl` de abajo.
 
 ## Endpoints
 
