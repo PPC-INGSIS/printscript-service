@@ -7,19 +7,18 @@ import java.util.Collections
 // Si la ejecución vence, outputs se lee desde otro thread mientras el intérprete puede seguir imprimiendo.
 class CollectingIo(
     inputs: List<String>,
-    private val maxOutputSize: Long,
+    maxOutputSize: Long,
 ) : PrintScriptIO {
     private val sent = inputs.size
     private val pending = ArrayDeque(inputs)
     private val printed = Collections.synchronizedList(mutableListOf<String>())
-    private var printedSize = 0L
+    private val budget = OutputBudget(maxOutputSize)
 
     val outputs: List<String>
         get() = synchronized(printed) { printed.toList() }
 
     override fun print(text: String) {
-        printedSize += text.length
-        if (printedSize > maxOutputSize) throw OutputTooLargeException(maxOutputSize)
+        budget.spend(text)
         printed += text
     }
 
