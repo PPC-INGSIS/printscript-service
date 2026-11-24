@@ -12,6 +12,10 @@ class InteractiveIo(
     maxPendingInputs: Int,
     private val emit: (ExecutionEvent) -> Unit,
 ) : PrintScriptIO {
+    init {
+        require(maxPendingInputs > 0) { "maxPendingInputs tiene que ser mayor a 0, pero es $maxPendingInputs" }
+    }
+
     private val budget = OutputBudget(maxOutputSize)
     private val inputs = ArrayBlockingQueue<String>(maxPendingInputs)
 

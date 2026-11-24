@@ -10,6 +10,7 @@ import java.time.Duration
 import java.util.concurrent.LinkedBlockingQueue
 import java.util.concurrent.TimeUnit
 import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
 import kotlin.test.assertIs
 import kotlin.test.assertNotNull
@@ -23,6 +24,9 @@ private val defaultInputTimeout = Duration.ofSeconds(5)
 // Lo bastante largo para no fallar en una máquina lenta: solo se espera entero si hay un bug
 private const val EVENT_TIMEOUT_SECONDS = 5L
 private const val QUIET_MILLIS = 200L
+
+// Con 5.000 niveles ya desborda; 20.000 deja margen por si la JVM corre con un stack más grande
+private const val DEEP_NESTING = 20_000
 
 class InteractiveExecutionTest {
     private val events = LinkedBlockingQueue<ExecutionEvent>()
@@ -69,6 +73,7 @@ class InteractiveExecutionTest {
     fun `cancelar antes de arrancar corta en el primer print`() {
         val execution = execution(snippet("10-hola-mundo.ps"), Version.V10)
 
+        // El javadoc de Thread.interrupt no lo garantiza para un thread sin arrancar; su @implNote sí lo registra
         execution.cancel()
         execution.start()
 
@@ -140,6 +145,25 @@ class InteractiveExecutionTest {
         execution(snippet("10-hola-mundo.ps"), Version.V10, emit = failingEmit).start()
 
         assertEquals(finished("Error inesperado al ejecutar el snippet"), next())
+    }
+
+    @Test
+    fun `un código con demasiado anidamiento termina con el error de anidamiento`() {
+        val code = "println(${"(".repeat(DEEP_NESTING)}1${")".repeat(DEEP_NESTING)});"
+
+        execution(code).start()
+
+        assertEquals(finished("El código tiene demasiados niveles de anidamiento"), next())
+    }
+
+    @Test
+    fun `rechaza un máximo de inputs pendientes que no sea positivo`() {
+        val error =
+            assertFailsWith<IllegalArgumentException> {
+                InteractiveIo(MAX_OUTPUT, defaultInputTimeout, maxPendingInputs = 0, emit = events::put)
+            }
+
+        assertEquals("maxPendingInputs tiene que ser mayor a 0, pero es 0", error.message)
     }
 
     private fun start(
