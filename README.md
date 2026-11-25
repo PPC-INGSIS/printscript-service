@@ -2,14 +2,14 @@
 
 Servicio de **Snippet Searcher** encargado del lenguaje PrintScript. Valida, formatea, lintea y ejecuta código PrintScript usando la librería del TP1.
 
-No guarda nada: no tiene base de datos ni estado. Tampoco sabe de usuarios ni de permisos. Lo llama el servicio de Snippets, nunca la UI.
+No tiene base de datos: no guarda nada entre pedidos. La única excepción es la [ejecución interactiva](#ws-executeinteractive), que vive en memoria mientras dura su conexión. Tampoco sabe de usuarios ni de permisos. Lo llama el servicio de Snippets, nunca la UI.
 
 ## Stack
 
 | | |
 |---|---|
 | Lenguaje | Kotlin 2.3 sobre Java 21 |
-| Framework | Spring Boot 4.1 (Web MVC, Actuator) |
+| Framework | Spring Boot 4.1 (Web MVC, WebSocket, Actuator) |
 | Lenguaje PrintScript | `printscript:runner` 1.1.1 (librería del TP1) |
 | Build | Gradle (Kotlin DSL) |
 | Calidad | ktlint, detekt, JaCoCo |
@@ -102,14 +102,20 @@ Si el código supera el tamaño máximo (ver [Límites](#límites)), los cuatro 
 
 ## Límites
 
-Acotan cuánto código procesa el servicio y cuánto produce `/execute`. Los números de los mensajes salen de estas properties.
+Acotan cuánto código procesa el servicio y cuánto producen y duran las ejecuciones. Los números de los mensajes salen de estas properties.
 
 | Property | Default | Qué limita | Pasarse responde |
 |---|---|---|---|
-| `printscript.limits.max-code-size` | `64KB` | Bytes UTF-8 de `code` en `/validate`, `/execute`, `/format` y `/lint` | `413` |
-| `printscript.limits.max-output-size` | `1MB` | Caracteres impresos por `/execute` (1 MB = 1048576 caracteres) | `200` con `error` |
+| `printscript.limits.max-code-size` | `64KB` | Bytes UTF-8 de `code` en `/validate`, `/execute`, `/format`, `/lint` y `/execute/interactive` | `413`. En `/execute/interactive`, `rejected` y cierre `1009` |
+| `printscript.limits.max-output-size` | `1MB` | Caracteres impresos por `/execute` o por una ejecución interactiva (1 MB = 1048576 caracteres) | `200` con `error`. En `/execute/interactive`, `finished` con `error` |
 | `printscript.limits.execution-timeout` | `5s` | Duración de `/execute` | `200` con `error` |
+| `printscript.interactive.input-timeout` | `60s` | Espera de cada input en `/execute/interactive` | `finished` con `error` |
+| `printscript.interactive.max-duration` | `10m` | Duración total de una ejecución interactiva, desde que arranca | `finished` con `error` |
+| `printscript.interactive.max-sessions` | `16` | Conexiones abiertas a la vez a `/execute/interactive`, tengan o no una ejecución | `rejected` y cierre `1013` al conectar |
+| `printscript.interactive.max-pending-inputs` | `32` | Inputs encolados que el snippet todavía no leyó | `rejected` y cierre `1008` |
+| `printscript.interactive.max-message-size` | `256KB` | Tamaño de un mensaje que llega a `/execute/interactive` | Cierre `1009`, sin `rejected` |
 
+- **Los límites de `printscript.interactive` tienen que ser mayores a 0.** Si alguno no lo es, el servicio no arranca y el error nombra la property.
 - **El tamaño de `code` se chequea después de leer el body.** En `/execute`, `/format` y `/lint`, Jackson ya armó el `String` cuando llega el chequeo: el límite acota lo que se procesa, no lo que se recibe. `/validate` cuenta los bytes mientras lee el stream y corta apenas pasa el máximo.
 - **El timeout no libera la memoria del thread.** El intérprete no chequea interrupciones: después de responder, el thread de la ejecución puede seguir corriendo hasta terminar. Protege la latencia, no la memoria.
 - **Las ejecuciones vencidas siguen ocupando el pool.** `/execute` corre en el `applicationTaskExecutor` de Spring Boot: 8 threads y cola sin límite. Si 8 ejecuciones vencidas siguen corriendo a la vez, los pedidos nuevos esperan en la cola, y esa espera cuenta para su timeout. Sin loops y con 64 KB de código, solo puede tardar un snippet que crece exponencialmente, y ese se queda sin memoria en segundos, así que el pool se libera rápido.
@@ -207,6 +213,74 @@ A tener en cuenta:
 - **Si faltan inputs, el error viene sin posición.** `line` y `column` llegan en `null`: la librería no le pasa la posición a quien da los inputs, y cuando el error llega al servicio ya no hay forma de saber en qué sentencia estaba. El mensaje dice cuántos se enviaron: `Faltan inputs: el snippet pidió más de los que se enviaron (se envió 1)`.
 - **Si la salida pasa el máximo, la ejecución se corta.** El error viene sin posición: `La salida superó el máximo de 1048576 caracteres`. `outputs` trae lo impreso hasta ahí, sin el texto que lo pasó. Los prompts de `readInput` también cuentan.
 - **Si la ejecución pasa el tiempo límite, se corta igual.** El error viene sin posición: `La ejecución superó el tiempo límite de 5 s`. `outputs` trae lo impreso hasta ese momento.
+
+### `WS /execute/interactive`
+
+Ejecuta código y va mandando cada output apenas se imprime; pide cada input recién cuando el snippet lo lee. Snippets la usa para que el usuario responda los `readInput` en el momento, en vez de mandar todos los inputs de antemano como en `/execute`. Igual que `/execute`, recibe el contenido y no una ruta.
+
+```bash
+websocat -H "Authorization: Bearer $TOKEN" ws://localhost:8082/execute/interactive
+```
+
+- **Se conecta Snippets, nunca el browser.** El handshake es un `GET` y pide el mismo token que el resto (ver [Autenticación](#autenticación)): sin token responde `401` y sin el scope, `403`.
+- **Una conexión es una ejecución.** Al terminar, el servidor cierra; para volver a ejecutar se abre otra.
+
+**Protocolo**
+
+Mensajes de texto en JSON, uno por mensaje, con el campo `type`.
+
+| Lo manda | Mensaje | Cuándo |
+|---|---|---|
+| Cliente | `{"type":"start","code":"...","version":"1.1"}` | Primer mensaje, una sola vez. Arranca la ejecución |
+| Cliente | `{"type":"input","value":"Juan"}` | Responde un `readInput`. Si llega antes de que lo pidan, queda encolado |
+| Servidor | `{"type":"output","text":"Nombre: "}` | Cada vez que el snippet imprime |
+| Servidor | `{"type":"input_request"}` | El snippet espera un input |
+| Servidor | `{"type":"finished","error":null}` | Terminó. Después cierra con `1000` |
+| Servidor | `{"type":"rejected","detail":"..."}` | El pedido es inválido. Después cierra (ver abajo) |
+
+`error` es el mismo que en `/execute`: `null` si terminó bien, o el error con su posición.
+
+```json
+{"type":"finished","error":{"message":"...","line":2,"column":9}}
+```
+
+Una conversación completa, con el snippet del ejemplo de `/execute` (`→` manda el cliente, `←` el servidor):
+
+```text
+→ {"type":"start","code":"let nombre: string = readInput(\"Nombre: \");\nprintln(\"Hola \" + nombre);","version":"1.1"}
+← {"type":"output","text":"Nombre: "}
+← {"type":"input_request"}
+→ {"type":"input","value":"Juan"}
+← {"type":"output","text":"Hola Juan"}
+← {"type":"finished","error":null}
+← cierre 1000
+```
+
+**Rechazos**
+
+Un pedido inválido responde `rejected` con el motivo en `detail` y cierra la conexión, lo que cancela la ejecución si había una.
+
+| Caso | `detail` | Cierre |
+|---|---|---|
+| El mensaje no es JSON | `El mensaje no es un JSON válido` | `1008` |
+| Falta `type` | `Falta el campo 'type'` | `1008` |
+| `type` desconocido | `Tipo de mensaje desconocido: 'stop'. Se espera 'start' o 'input'` | `1008` |
+| Falta un campo, o no es texto | `El mensaje 'start' necesita el campo 'code' como texto` | `1008` |
+| `input` antes de `start` | `El primer mensaje tiene que ser 'start'` | `1008` |
+| Un segundo `start` | `La ejecución ya arrancó: no se puede mandar otro 'start'` | `1008` |
+| La versión no existe | `La versión '2.0' no existe. Versiones disponibles: 1.0, 1.1` | `1008` |
+| El código supera el tamaño máximo | `El código supera el tamaño máximo de 64 KB` | `1009` |
+| La cola de inputs está llena | `Hay demasiados inputs sin consumir: el máximo es 32` | `1008` |
+| Hay demasiadas conexiones abiertas, al conectar | `Se alcanzó el máximo de conexiones abiertas a la vez (16). Probá de nuevo más tarde` | `1013` |
+
+A tener en cuenta:
+
+- **Cerrar la conexión, del lado que sea, cancela la ejecución.**
+- **Los errores de la ejecución no son rechazos.** Un error de sintaxis o de ejecución, pasarse de la salida, no recibir un input a tiempo o pasarse de la duración máxima terminan con `finished` y el error, igual que en `/execute`. Los de límites vienen sin posición: `No se recibió un input en 60 s`, `La ejecución superó la duración máxima de 600 s`.
+- **Un mensaje de más de `max-message-size` cierra con `1009`, sin `rejected`.** Lo corta el servidor WebSocket antes de que llegue al servicio.
+- **El prompt de `readInput` sale como `output`**, antes del `input_request`. `readEnv` nunca lee las variables del servidor, como en `/execute`.
+- **La ejecución vive en memoria, en una sola réplica.** Un deploy o un reinicio corta las ejecuciones abiertas: la conexión se cierra y el usuario tiene que volver a ejecutar. No hay reconexión.
+- **No hay plazo para el `start`.** Una conexión que nunca lo manda ocupa un lugar de `max-sessions` hasta que se cierre.
 
 ### `POST /format`
 
