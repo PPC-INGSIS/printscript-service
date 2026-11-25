@@ -2,8 +2,8 @@ package snippetsearcher.printscript.execution
 
 import org.printscript.common.Version
 import org.slf4j.LoggerFactory
+import snippetsearcher.printscript.common.InteractiveLimits
 import snippetsearcher.printscript.common.SourceError
-import java.time.Duration
 
 private val logger = LoggerFactory.getLogger(InteractiveExecution::class.java)
 private val unexpectedError = SourceError("Error inesperado al ejecutar el snippet", line = null, column = null)
@@ -16,11 +16,10 @@ class InteractiveExecution(
     code: String,
     version: Version,
     maxOutputSize: Long,
-    inputTimeout: Duration,
-    maxPendingInputs: Int,
+    limits: InteractiveLimits,
     private val emit: (ExecutionEvent) -> Unit,
 ) {
-    private val io = InteractiveIo(maxOutputSize, inputTimeout, maxPendingInputs, emit)
+    private val io = InteractiveIo(maxOutputSize, limits, emit)
 
     // Virtual: esperar un input no ocupa un thread del pool de /execute
     private val thread = Thread.ofVirtual().unstarted { run(code, version) }
@@ -38,6 +37,7 @@ class InteractiveExecution(
         code: String,
         version: Version,
     ) {
+        io.startClock()
         val error =
             try {
                 runSnippet(code, version, io)
