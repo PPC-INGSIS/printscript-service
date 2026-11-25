@@ -15,8 +15,10 @@ data class Limits(
     val codeTooLargeMessage: String
         get() = "El código supera el tamaño máximo de ${maxCodeSize.describe()}"
 
+    fun isCodeTooLarge(code: String): Boolean = code.toByteArray(Charsets.UTF_8).size > maxCodeSize.toBytes()
+
     fun rejectLargeCode(code: String): ResponseEntity<ProblemDetail>? =
-        if (code.toByteArray(Charsets.UTF_8).size > maxCodeSize.toBytes()) {
+        if (isCodeTooLarge(code)) {
             payloadTooLarge(codeTooLargeMessage)
         } else {
             null
