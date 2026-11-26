@@ -27,4 +27,15 @@ USER app
 
 ENV JAVA_TOOL_OPTIONS="-XX:MaxRAMPercentage=75 -javaagent:/app/newrelic.jar"
 
+# El puerto es configuración: el stack lo puede pisar con SERVER_PORT. Spring y el
+# healthcheck leen esta misma variable, así nunca apuntan a puertos distintos.
+ENV SERVER_PORT=8080
+EXPOSE ${SERVER_PORT}
+
+# Swarm da por lista la tarea recién cuando Spring contesta, no cuando arranca Java, y
+# reinicia la app si deja de contestar. start-period cubre el arranque en frío de la VM.
+# /actuator/health/** entra sin token (SecurityConfiguration).
+HEALTHCHECK --interval=10s --timeout=3s --start-period=60s --retries=3 \
+    CMD wget -q -O /dev/null "http://127.0.0.1:${SERVER_PORT}/actuator/health/readiness" || exit 1
+
 ENTRYPOINT ["java", "-jar", "app.jar"]
