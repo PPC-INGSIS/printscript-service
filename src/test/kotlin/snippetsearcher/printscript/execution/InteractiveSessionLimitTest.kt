@@ -25,11 +25,29 @@ private const val EVENT_TIMEOUT_SECONDS = 5L
 // Sin el arreglo, la ejecución se crea en milisegundos: con esto alcanza para verla
 private const val QUIET_MILLIS = 200L
 private const val REJECTED_ATTEMPTS = 5
+
+// Unos 64 MB de salida (de ahí el max-output-size del contexto), más de lo que entra en los buffers de TCP de
+// cualquier lado: el envío se tiene que trabar. Se arma acá porque son mil println iguales de un texto de 64 KB.
+private val FLOODING_CODE =
+    buildString {
+        appendLine("let s0: string = \"xxxxxxxxxxxxxxxx\";")
+        for (i in 1..12) appendLine("let s$i: string = s${i - 1} + s${i - 1};")
+        repeat(1000) { appendLine("println(s12);") }
+    }
+private val CANCELLED = ExecutionEvent.Finished(SourceError("La ejecución se canceló", line = null, column = null))
 private const val REJECTED_BY_SESSIONS =
     "Se alcanzó el máximo de conexiones abiertas a la vez (1). Probá de nuevo más tarde"
 
-// Contexto aparte: con max-sessions=1 cualquier otra conexión abierta molestaría a los demás tests
-@SpringBootTest(webEnvironment = WebEnvironment.RANDOM_PORT, properties = ["printscript.interactive.max-sessions=1"])
+// Contexto aparte: con max-sessions=1 cualquier otra conexión abierta molestaría a los demás tests.
+// El send-timeout es chico para que el corte del cliente que no lee se vea antes de los 5 s de espera.
+@SpringBootTest(
+    webEnvironment = WebEnvironment.RANDOM_PORT,
+    properties = [
+        "printscript.interactive.max-sessions=1",
+        "printscript.interactive.send-timeout=500ms",
+        "printscript.limits.max-output-size=128MB",
+    ],
+)
 @Import(TestJwtDecoder::class, InteractiveSessionLimitTest.Recording::class)
 class InteractiveSessionLimitTest {
     @LocalServerPort
@@ -75,8 +93,19 @@ class InteractiveSessionLimitTest {
 
         socket.close()
 
-        val cancelled = ExecutionEvent.Finished(SourceError("La ejecución se canceló", line = null, column = null))
-        assertEquals(cancelled, nextFinished(events))
+        assertEquals(CANCELLED, nextFinished(events))
+    }
+
+    @Test
+    fun `un cliente que deja de leer pierde la conexión al vencer send-timeout`() {
+        val stuck = TestSocket.open(port, reading = false)
+        Recording.created.clear()
+        stuck.send("type" to "start", "code" to FLOODING_CODE, "version" to "1.0")
+        assertNotNull(Recording.created.poll(EVENT_TIMEOUT_SECONDS, TimeUnit.SECONDS), "No arrancó la ejecución")
+
+        assertEquals(CANCELLED, nextFinished(Recording.lastEvents.get()))
+        startAccepted().close()
+        stuck.abort()
     }
 
     // El servidor descuenta la conexión después de mandar el cierre: al reconectar puede seguir contada un instante.
@@ -115,8 +144,9 @@ class InteractiveSessionLimitTest {
         @Primary
         fun recordingExecutions(default: DefaultInteractiveExecutionFactory) =
             InteractiveExecutionFactory { code, version, emit ->
-                created.put(Unit)
+                // Antes de avisar: quien espera en created lee lastEvents enseguida
                 val events = LinkedBlockingQueue<ExecutionEvent>().also { lastEvents.set(it) }
+                created.put(Unit)
                 default.create(code, version) {
                     events.put(it)
                     emit(it)

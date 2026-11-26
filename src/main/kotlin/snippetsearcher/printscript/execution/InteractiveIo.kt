@@ -14,13 +14,8 @@ class InteractiveIo(
     private val budget = OutputBudget(maxOutputSize)
     private val inputs = ArrayBlockingQueue<String>(limits.maxPendingInputs)
 
-    // Lo escribe y lo lee solo el thread del snippet
-    private var deadline = 0L
-
-    // Se llama al arrancar la ejecución, no al crearla: los inputs pueden encolarse antes
-    fun startClock() {
-        deadline = System.nanoTime() + limits.maxDuration.toNanos()
-    }
+    // El plazo corre desde que se crea la ejecución, y el handler la crea al recibir el start
+    private val deadline = System.nanoTime() + limits.maxDuration.toNanos()
 
     override fun print(message: String) {
         // El intérprete no chequea interrupciones: un snippet que solo imprime se corta acá

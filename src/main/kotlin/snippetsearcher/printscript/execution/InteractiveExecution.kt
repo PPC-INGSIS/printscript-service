@@ -37,7 +37,6 @@ class InteractiveExecution(
         code: String,
         version: Version,
     ) {
-        io.startClock()
         val error =
             try {
                 runSnippet(code, version, io)

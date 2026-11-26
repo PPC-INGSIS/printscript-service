@@ -110,10 +110,11 @@ Acotan cuánto código procesa el servicio y cuánto producen y duran las ejecuc
 | `printscript.limits.max-output-size` | `1MB` | Caracteres impresos por `/execute` o por una ejecución interactiva (1 MB = 1048576 caracteres) | `200` con `error`. En `/execute/interactive`, `finished` con `error` |
 | `printscript.limits.execution-timeout` | `5s` | Duración de `/execute` | `200` con `error` |
 | `printscript.interactive.input-timeout` | `60s` | Espera de cada input en `/execute/interactive` | `finished` con `error` |
-| `printscript.interactive.max-duration` | `10m` | Duración total de una ejecución interactiva, desde que arranca | `finished` con `error` |
+| `printscript.interactive.max-duration` | `10m` | Duración total de una ejecución interactiva, desde el `start` | `finished` con `error` |
 | `printscript.interactive.max-sessions` | `16` | Conexiones abiertas a la vez a `/execute/interactive`, tengan o no una ejecución | `rejected` y cierre `1013` al conectar |
 | `printscript.interactive.max-pending-inputs` | `32` | Inputs encolados que el snippet todavía no leyó | `rejected` y cierre `1008` |
 | `printscript.interactive.max-message-size` | `256KB` | Tamaño de un mensaje que llega a `/execute/interactive` | Cierre `1009`, sin `rejected` |
+| `printscript.interactive.send-timeout` | `20s` | Espera de cada envío a un cliente de `/execute/interactive` que no lee | Se corta la conexión, sin `rejected` ni `finished`, y se cancela la ejecución |
 
 - **Los límites de `printscript.interactive` tienen que ser mayores a 0.** Si alguno no lo es, el servicio no arranca y el error nombra la property.
 - **El tamaño de `code` se chequea después de leer el body.** En `/execute`, `/format` y `/lint`, Jackson ya armó el `String` cuando llega el chequeo: el límite acota lo que se procesa, no lo que se recibe. `/validate` cuenta los bytes mientras lee el stream y corta apenas pasa el máximo.
@@ -276,6 +277,7 @@ Un pedido inválido responde `rejected` con el motivo en `detail` y cierra la co
 A tener en cuenta:
 
 - **Cerrar la conexión, del lado que sea, cancela la ejecución.**
+- **Un cliente que deja de leer corta la conexión.** Si un envío queda trabado más de `send-timeout`, se da por fallido y se cierra la sesión, sin `rejected` ni `finished`, lo que cancela la ejecución.
 - **Los errores de la ejecución no son rechazos.** Un error de sintaxis o de ejecución, pasarse de la salida, no recibir un input a tiempo o pasarse de la duración máxima terminan con `finished` y el error, igual que en `/execute`. Los de límites vienen sin posición: `No se recibió un input en 60 s`, `La ejecución superó la duración máxima de 600 s`.
 - **Un mensaje de más de `max-message-size` cierra con `1009`, sin `rejected`.** Lo corta el servidor WebSocket antes de que llegue al servicio.
 - **El prompt de `readInput` sale como `output`**, antes del `input_request`. `readEnv` nunca lee las variables del servidor, como en `/execute`.

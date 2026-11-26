@@ -183,11 +183,18 @@ class InteractiveExecutionTest {
         emit: (ExecutionEvent) -> Unit = events::put,
     ) = InteractiveExecution(code, version, maxOutputSize, limits, emit)
 
-    // max-sessions y max-message-size son del transporte: el núcleo no los usa
+    // max-sessions, max-message-size y send-timeout son del transporte: el núcleo no los usa
     private fun limits(
         inputTimeout: Duration = defaultInputTimeout,
         maxDuration: Duration = defaultMaxDuration,
-    ) = InteractiveLimits(inputTimeout, maxDuration, maxSessions = 1, MAX_PENDING_INPUTS, DataSize.ofKilobytes(1))
+    ) = InteractiveLimits(
+        inputTimeout,
+        maxDuration,
+        maxSessions = 1,
+        MAX_PENDING_INPUTS,
+        DataSize.ofKilobytes(1),
+        sendTimeout = Duration.ofSeconds(1),
+    )
 
     private fun next(): ExecutionEvent =
         assertNotNull(events.poll(EVENT_TIMEOUT_SECONDS, TimeUnit.SECONDS), "No llegó el evento esperado")
