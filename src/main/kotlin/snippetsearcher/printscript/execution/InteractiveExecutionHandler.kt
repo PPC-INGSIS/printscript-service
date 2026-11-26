@@ -14,12 +14,15 @@ import snippetsearcher.printscript.common.InteractiveLimits
 import snippetsearcher.printscript.common.Limits
 import snippetsearcher.printscript.common.SourceError
 import snippetsearcher.printscript.common.VersionResolution
+import snippetsearcher.printscript.common.describe
 import snippetsearcher.printscript.common.resolveVersion
 import tools.jackson.core.JacksonException
 import tools.jackson.databind.JsonNode
 import tools.jackson.databind.json.JsonMapper
 import java.time.Duration
+import java.util.concurrent.ScheduledFuture
 import java.util.concurrent.atomic.AtomicInteger
+import java.util.concurrent.atomic.AtomicReference
 import java.util.concurrent.locks.ReentrantLock
 import kotlin.concurrent.withLock
 
@@ -31,6 +34,7 @@ class InteractiveExecutionHandler(
     private val interactiveLimits: InteractiveLimits,
     private val executions: InteractiveExecutionFactory,
     private val json: JsonMapper,
+    private val deadlines: StartDeadlines,
 ) : TextWebSocketHandler() {
     private val openSessions = AtomicInteger()
 
@@ -47,6 +51,14 @@ class InteractiveExecutionHandler(
                 "Se alcanzó el máximo de conexiones abiertas a la vez ($max). Probá de nuevo más tarde",
                 CloseStatus.SERVICE_OVERLOAD,
             )
+        } else {
+            // Sin plazo, una conexión que nunca manda el start ocuparía un lugar de max-sessions hasta que
+            // el cliente la cierre: con max-sessions conexiones mudas, nadie más podría ejecutar
+            val timeout = interactiveLimits.startTimeout
+            connection.startDeadline =
+                deadlines.schedule(timeout) {
+                    connection.rejectIfNotStarted("No llegó el 'start' en ${timeout.describe()}")
+                }
         }
     }
 
@@ -71,7 +83,9 @@ class InteractiveExecutionHandler(
         status: CloseStatus,
     ) {
         openSessions.decrementAndGet()
-        connection(session).execution?.cancel()
+        val connection = connection(session)
+        connection.startDeadline?.cancel(false)
+        connection.execution?.cancel()
     }
 
     private fun start(
@@ -87,9 +101,8 @@ class InteractiveExecutionHandler(
                 is VersionResolution.Unsupported -> connection.reject(resolution.message)
                 is VersionResolution.Supported -> {
                     val execution = executions.create(request.code, resolution.version, connection::emit)
-                    // Se guarda antes de arrancar: emit la usa para cancelar si un envío falla
-                    connection.execution = execution
-                    execution.start()
+                    // Si el plazo del start ya rechazó y cerró la conexión, no arranca
+                    if (connection.begin(execution)) execution.start()
                 }
             }
         }
@@ -143,6 +156,14 @@ class InteractiveExecutionHandler(
     ) {
         @Volatile
         var execution: InteractiveExecution? = null
+            private set
+
+        @Volatile
+        var startDeadline: ScheduledFuture<*>? = null
+
+        // Quién ganó entre el start y el plazo. Va aparte del lock de los envíos: ese lock se mantiene mientras
+        // se envía, y un envío a un cliente que no lee puede trabarse hasta send-timeout
+        private val phase = AtomicReference(Phase.WAITING_START)
 
         // Los eventos salen del thread del snippet y los rejected del contenedor: el lock hace que no envíen a la vez
         // y que después de un cierre no salga nada más
@@ -161,6 +182,28 @@ class InteractiveExecutionHandler(
             } catch (failed: Exception) {
                 execution?.cancel()
             }
+        }
+
+        /**
+         * Guarda la ejecución antes de arrancarla, y dice si se puede arrancar.
+         *
+         * El plazo del start vence en otro thread. Sin algo que los ordene, el plazo podría ver que no hay
+         * ejecución, el start guardarla y arrancarla, y el plazo cerrar igual la conexión. El compareAndSet
+         * deja pasar a uno solo: o el plazo ya rechazó y esto devuelve false, o esto ganó y el plazo no hace
+         * nada. Ninguno espera al otro, así que el thread de Tomcat nunca queda atrás de un envío trabado.
+         *
+         * Se guarda antes de arrancar porque emit la usa para cancelar si un envío falla.
+         */
+        fun begin(started: InteractiveExecution): Boolean {
+            if (!phase.compareAndSet(Phase.WAITING_START, Phase.STARTED)) return false
+            execution = started
+            startDeadline?.cancel(false)
+            return true
+        }
+
+        // Ver begin: si el start ya ganó, no hace nada
+        fun rejectIfNotStarted(detail: String) {
+            if (phase.compareAndSet(Phase.WAITING_START, Phase.TIMED_OUT)) reject(detail)
         }
 
         // Si la ejecución ya cerró la sesión, no hay a quién avisarle. Si el envío falla, la conexión ya no sirve.
@@ -183,6 +226,8 @@ class InteractiveExecutionHandler(
         private fun send(message: ServerMessage) = session.sendMessage(TextMessage(json.writeValueAsString(message)))
     }
 }
+
+private enum class Phase { WAITING_START, STARTED, TIMED_OUT }
 
 private sealed interface ClientMessage {
     data class Start(

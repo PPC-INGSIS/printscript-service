@@ -126,6 +126,7 @@ Acotan cuánto código procesa el servicio y cuánto producen y duran las ejecuc
 | `printscript.interactive.max-pending-inputs` | `32` | Inputs encolados que el snippet todavía no leyó | `rejected` y cierre `1008` |
 | `printscript.interactive.max-message-size` | `256KB` | Tamaño de un mensaje que llega a `/execute/interactive` | Cierre `1009`, sin `rejected` |
 | `printscript.interactive.send-timeout` | `20s` | Espera de cada envío a un cliente de `/execute/interactive` que no lee | Se corta la conexión, sin `rejected` ni `finished`, y se cancela la ejecución |
+| `printscript.interactive.start-timeout` | `15s` | Espera del `start` desde que se abre la conexión a `/execute/interactive` | `rejected` y cierre `1008` |
 
 - **Los límites de `printscript.interactive` tienen que ser mayores a 0.** Si alguno no lo es, el servicio no arranca y el error nombra la property.
 - **El tamaño de `code` se chequea después de leer el body.** En `/execute`, `/format` y `/lint`, Jackson ya armó el `String` cuando llega el chequeo: el límite acota lo que se procesa, no lo que se recibe. `/validate` cuenta los bytes mientras lee el stream y corta apenas pasa el máximo.
@@ -289,6 +290,7 @@ Un pedido inválido responde `rejected` con el motivo en `detail` y cierra la co
 | El código supera el tamaño máximo | `El código supera el tamaño máximo de 64 KB` | `1009` |
 | La cola de inputs está llena | `Hay demasiados inputs sin consumir: el máximo es 32` | `1008` |
 | Hay demasiadas conexiones abiertas, al conectar | `Se alcanzó el máximo de conexiones abiertas a la vez (16). Probá de nuevo más tarde` | `1013` |
+| El `start` no llega a tiempo | `No llegó el 'start' en 15 s` | `1008` |
 
 A tener en cuenta:
 
@@ -298,7 +300,7 @@ A tener en cuenta:
 - **Un mensaje de más de `max-message-size` cierra con `1009`, sin `rejected`.** Lo corta el servidor WebSocket antes de que llegue al servicio.
 - **El prompt de `readInput` sale como `output`**, antes del `input_request`. `readEnv` nunca lee las variables del servidor, como en `/execute`.
 - **La ejecución vive en memoria, en una sola réplica.** Un deploy o un reinicio corta las ejecuciones abiertas: la conexión se cierra y el usuario tiene que volver a ejecutar. No hay reconexión.
-- **No hay plazo para el `start`.** Una conexión que nunca lo manda ocupa un lugar de `max-sessions` hasta que se cierre.
+- **El `start` tiene plazo, la ejecución no.** Una conexión que no manda el `start` en `start-timeout` se rechaza y libera su lugar de `max-sessions`. Una vez que arrancó, la ejecución dura lo que permitan `input-timeout` y `max-duration`.
 
 ### `POST /format`
 
