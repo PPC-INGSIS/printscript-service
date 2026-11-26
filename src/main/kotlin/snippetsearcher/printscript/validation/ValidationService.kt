@@ -5,6 +5,7 @@ import org.printscript.lexer.source.StreamSourceReader
 import org.printscript.runner.ValidateRunner
 import org.springframework.stereotype.Service
 import snippetsearcher.printscript.common.SourceError
+import snippetsearcher.printscript.common.handlingDeepNesting
 import snippetsearcher.printscript.common.toSourceError
 import java.io.InputStream
 
@@ -15,7 +16,9 @@ class ValidationService {
         version: Version,
         source: InputStream,
     ): List<SourceError> =
-        ValidateRunner(version)
-            .validate { StreamSourceReader.of(source) }
-            .map { it.toSourceError() }
+        handlingDeepNesting({ listOf(it) }) {
+            ValidateRunner(version)
+                .validate { StreamSourceReader.of(source) }
+                .map { it.toSourceError() }
+        }
 }
