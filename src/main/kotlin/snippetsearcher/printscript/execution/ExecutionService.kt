@@ -26,8 +26,8 @@ class ExecutionService(
         return ExecutionResponse(io.outputs, error)
     }
 
-    // El intérprete no chequea interrupciones: cancel(true) no lo frena y el thread puede seguir
-    // corriendo después de responder. El timeout protege la latencia, no la memoria.
+    // cancel(true) interrumpe el thread y CollectingIo lo corta en el próximo print o read. Entre un IO y otro
+    // el thread sigue corriendo después de responder: el intérprete no chequea interrupciones.
     private fun runWithTimeout(
         code: String,
         version: Version,
