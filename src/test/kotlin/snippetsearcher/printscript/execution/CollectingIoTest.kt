@@ -1,5 +1,6 @@
 package snippetsearcher.printscript.execution
 
+import org.junit.jupiter.api.AfterEach
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.assertThrows
 import kotlin.test.assertEquals
@@ -9,6 +10,11 @@ private const val PREFIX = "Faltan inputs: el snippet pidió más de los que se 
 private const val MAX_OUTPUT = 10L
 
 class CollectingIoTest {
+    @AfterEach
+    fun clearInterrupt() {
+        Thread.interrupted()
+    }
+
     @Test
     fun `print acumula en orden`() {
         val io = CollectingIo(emptyList(), MAX_OUTPUT)
@@ -80,6 +86,26 @@ class CollectingIoTest {
 
         assertEquals("La salida superó el máximo de 10 caracteres", exception.message)
         assertEquals(listOf("12345", "67890"), io.outputs)
+    }
+
+    @Test
+    fun `con el thread interrumpido print falla con la cancelación y no guarda el texto`() {
+        val io = CollectingIo(emptyList(), MAX_OUTPUT)
+        Thread.currentThread().interrupt()
+
+        assertThrows<ExecutionCancelled> { io.print("uno") }
+
+        assertEquals(emptyList(), io.outputs)
+    }
+
+    @Test
+    fun `con el thread interrumpido read falla con la cancelación y no consume el input`() {
+        val io = CollectingIo(listOf("Juan"), MAX_OUTPUT)
+        Thread.currentThread().interrupt()
+
+        assertThrows<ExecutionCancelled> { io.read("Nombre: ") }
+
+        assertEquals("Juan", io.read("Nombre: "))
     }
 
     private fun missingInputMessage(sent: Int): String? {
