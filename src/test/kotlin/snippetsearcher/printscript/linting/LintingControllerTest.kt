@@ -11,6 +11,7 @@ import org.springframework.test.json.JsonCompareMode
 import org.springframework.test.web.servlet.MockMvc
 import org.springframework.test.web.servlet.post
 import snippetsearcher.printscript.common.Limits
+import snippetsearcher.printscript.common.deeplyNestedCode
 import tools.jackson.databind.json.JsonMapper
 
 private const val MAX_CODE_SIZE = 64 * 1024
@@ -34,7 +35,7 @@ class LintingControllerTest(
           {"rule":"println-argument",
            "message":"println solo admite un identificador o un literal, no una expresión.",
            "line":3,"column":9,"severity":"ERROR"}
-        ],"ignoredRules":[]}
+        ],"error":null,"ignoredRules":[]}
         """
 
     @Test
@@ -42,7 +43,7 @@ class LintingControllerTest(
         lint("40-para-lintear.ps", "1.1", emptyMap()).andExpect {
             status { isOk() }
             header { doesNotExist("Deprecation") }
-            content { json("""{"violations":[],"ignoredRules":[]}""", JsonCompareMode.STRICT) }
+            content { json("""{"violations":[],"error":null,"ignoredRules":[]}""", JsonCompareMode.STRICT) }
         }
     }
 
@@ -58,10 +59,48 @@ class LintingControllerTest(
     }
 
     @Test
+    fun `un código con demasiado anidamiento responde 200 con las violaciones hasta ahí y el error`() {
+        val code = "let mi_variable: number = 1;\n$deeplyNestedCode"
+        val message = "El identificador 'mi_variable' no sigue la convención de nombres configurada."
+        val body = mapOf("code" to code, "version" to "1.1", "rules" to mapOf("identifier-naming" to "camel-case"))
+
+        post(json.writeValueAsString(body)).andExpect {
+            status { isOk() }
+            content {
+                json(
+                    """
+                    {
+                      "violations": [{
+                        "rule": "identifier-naming",
+                        "message": "$message",
+                        "line": 1,
+                        "column": 5,
+                        "severity": "WARNING"
+                      }],
+                      "error": {
+                        "message": "El código tiene demasiados niveles de anidamiento",
+                        "line": null,
+                        "column": null
+                      },
+                      "ignoredRules": []
+                    }
+                    """,
+                    JsonCompareMode.STRICT,
+                )
+            }
+        }
+    }
+
+    @Test
     fun `read-input-argument en un snippet 1_0 se ignora y se informa en ignoredRules`() {
         lint("10-hola-mundo.ps", "1.0", mapOf("read-input-argument" to true)).andExpect {
             status { isOk() }
-            content { json("""{"violations":[],"ignoredRules":["read-input-argument"]}""", JsonCompareMode.STRICT) }
+            content {
+                json(
+                    """{"violations":[],"error":null,"ignoredRules":["read-input-argument"]}""",
+                    JsonCompareMode.STRICT,
+                )
+            }
         }
     }
 
