@@ -7,9 +7,11 @@ import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc
 import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest
 import org.springframework.context.annotation.Import
 import org.springframework.http.MediaType
+import org.springframework.test.json.JsonCompareMode
 import org.springframework.test.web.servlet.MockMvc
 import org.springframework.test.web.servlet.post
 import snippetsearcher.printscript.common.Limits
+import snippetsearcher.printscript.common.deeplyNestedCode
 
 private const val MAX_CODE_SIZE = 64 * 1024
 
@@ -47,6 +49,29 @@ class ValidationControllerTest(
             status { isOk() }
             jsonPath("$.errors[0].line") { value(1) }
             jsonPath("$.errors[0].column") { value(7) }
+        }
+    }
+
+    @Test
+    fun `un código con demasiado anidamiento responde 200 con solo el error de anidamiento`() {
+        validate("1.1", deeplyNestedCode).andExpect {
+            status { isOk() }
+            content {
+                json(
+                    """
+                    {
+                      "errors": [
+                        {
+                          "message": "El código tiene demasiados niveles de anidamiento",
+                          "line": null,
+                          "column": null
+                        }
+                      ]
+                    }
+                    """,
+                    JsonCompareMode.STRICT,
+                )
+            }
         }
     }
 

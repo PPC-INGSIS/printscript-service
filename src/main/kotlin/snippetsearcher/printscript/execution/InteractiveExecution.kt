@@ -8,9 +8,6 @@ import snippetsearcher.printscript.common.SourceError
 private val logger = LoggerFactory.getLogger(InteractiveExecution::class.java)
 private val unexpectedError = SourceError("Error inesperado al ejecutar el snippet", line = null, column = null)
 
-// Sin número: el límite depende del tamaño del stack de la JVM
-private val tooDeepError = SourceError("El código tiene demasiados niveles de anidamiento", line = null, column = null)
-
 // Una por ejecución. Los eventos se emiten desde el thread del snippet, en orden.
 class InteractiveExecution(
     code: String,
@@ -31,7 +28,7 @@ class InteractiveExecution(
     // La interrupción la convierte InteractiveIo en ExecutionCancelled, así que igual llega Finished
     fun cancel() = thread.interrupt()
 
-    // Una Exception es un bug y se informa para no dejar al cliente esperando; otros Error, como OOM, se propagan
+    // Una Exception es un bug y se informa para no dejar al cliente esperando; un Error, como OOM, se propaga
     @Suppress("TooGenericExceptionCaught")
     private fun run(
         code: String,
@@ -40,10 +37,6 @@ class InteractiveExecution(
         val error =
             try {
                 runSnippet(code, version, io)
-            } catch (overflow: StackOverflowError) {
-                // Sin stack trace: lo causa el código del usuario, no el servidor
-                logger.warn("Una ejecución interactiva desbordó el stack: {}", overflow.toString())
-                tooDeepError
             } catch (unexpected: Exception) {
                 // Se loguea antes de emitir: si lo que falló es el emit, el de Finished también puede fallar
                 logger.error("Error inesperado en una ejecución interactiva", unexpected)

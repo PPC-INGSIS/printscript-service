@@ -5,6 +5,7 @@ import org.printscript.common.Version
 import org.printscript.lexer.source.StringSourceReader
 import org.printscript.runner.AnalyzeRunner
 import org.springframework.stereotype.Service
+import snippetsearcher.printscript.common.handlingDeepNesting
 
 @Service
 class LintingService {
@@ -15,7 +16,13 @@ class LintingService {
         config: AnalyzerConfig,
     ): LintingResponse {
         val violations = mutableListOf<LintViolation>()
-        AnalyzeRunner(config, version).analyze({ StringSourceReader(code) }) { violations.add(it.toLintViolation()) }
-        return LintingResponse(violations)
+        val error =
+            handlingDeepNesting({ it }) {
+                AnalyzeRunner(config, version).analyze({ StringSourceReader(code) }) {
+                    violations.add(it.toLintViolation())
+                }
+                null
+            }
+        return LintingResponse(violations, error)
     }
 }
