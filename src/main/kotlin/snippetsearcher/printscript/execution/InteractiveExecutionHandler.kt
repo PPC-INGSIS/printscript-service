@@ -22,6 +22,7 @@ import tools.jackson.databind.json.JsonMapper
 import java.time.Duration
 import java.util.concurrent.ScheduledFuture
 import java.util.concurrent.atomic.AtomicInteger
+import java.util.concurrent.atomic.AtomicReference
 import java.util.concurrent.locks.ReentrantLock
 import kotlin.concurrent.withLock
 
@@ -160,6 +161,10 @@ class InteractiveExecutionHandler(
         @Volatile
         var startDeadline: ScheduledFuture<*>? = null
 
+        // Quién ganó entre el start y el plazo. Va aparte del lock de los envíos: ese lock se mantiene mientras
+        // se envía, y un envío a un cliente que no lee puede trabarse hasta send-timeout
+        private val phase = AtomicReference(Phase.WAITING_START)
+
         // Los eventos salen del thread del snippet y los rejected del contenedor: el lock hace que no envíen a la vez
         // y que después de un cierre no salga nada más
         private val sending = ReentrantLock()
@@ -182,38 +187,34 @@ class InteractiveExecutionHandler(
         /**
          * Guarda la ejecución antes de arrancarla, y dice si se puede arrancar.
          *
-         * Se guarda antes porque emit la usa para cancelar si un envío falla. Va bajo el mismo lock que
-         * `rejectIfNotStarted`: el plazo del start vence en otro thread, y sin el lock podría ver la
-         * ejecución en null, el start guardarla y arrancarla, y el plazo cerrar igual la conexión.
-         * Con el lock pasa una de dos: o el plazo rechazó primero y acá la sesión ya está cerrada, o
-         * esto guardó la ejecución primero y el plazo no hace nada.
+         * El plazo del start vence en otro thread. Sin algo que los ordene, el plazo podría ver que no hay
+         * ejecución, el start guardarla y arrancarla, y el plazo cerrar igual la conexión. El compareAndSet
+         * deja pasar a uno solo: o el plazo ya rechazó y esto devuelve false, o esto ganó y el plazo no hace
+         * nada. Ninguno espera al otro, así que el thread de Tomcat nunca queda atrás de un envío trabado.
+         *
+         * Se guarda antes de arrancar porque emit la usa para cancelar si un envío falla.
          */
-        fun begin(started: InteractiveExecution): Boolean =
-            sending.withLock {
-                if (!session.isOpen) return false
-                execution = started
-                startDeadline?.cancel(false)
-                true
-            }
+        fun begin(started: InteractiveExecution): Boolean {
+            if (!phase.compareAndSet(Phase.WAITING_START, Phase.STARTED)) return false
+            execution = started
+            startDeadline?.cancel(false)
+            return true
+        }
 
-        fun reject(
-            detail: String,
-            status: CloseStatus = CloseStatus.POLICY_VIOLATION,
-        ) = rejectIf(detail, status) { true }
-
-        // El chequeo va dentro del lock, junto con el rechazo: ver begin
-        fun rejectIfNotStarted(detail: String) = rejectIf(detail, CloseStatus.POLICY_VIOLATION) { execution == null }
+        // Ver begin: si el start ya ganó, no hace nada
+        fun rejectIfNotStarted(detail: String) {
+            if (phase.compareAndSet(Phase.WAITING_START, Phase.TIMED_OUT)) reject(detail)
+        }
 
         // Si la ejecución ya cerró la sesión, no hay a quién avisarle. Si el envío falla, la conexión ya no sirve.
         @Suppress("TooGenericExceptionCaught", "SwallowedException")
-        private fun rejectIf(
+        fun reject(
             detail: String,
-            status: CloseStatus,
-            condition: () -> Boolean,
+            status: CloseStatus = CloseStatus.POLICY_VIOLATION,
         ) {
             try {
                 sending.withLock {
-                    if (!session.isOpen || !condition()) return
+                    if (!session.isOpen) return
                     send(ServerMessage.Rejected(detail))
                     session.close(status)
                 }
@@ -225,6 +226,8 @@ class InteractiveExecutionHandler(
         private fun send(message: ServerMessage) = session.sendMessage(TextMessage(json.writeValueAsString(message)))
     }
 }
+
+private enum class Phase { WAITING_START, STARTED, TIMED_OUT }
 
 private sealed interface ClientMessage {
     data class Start(
