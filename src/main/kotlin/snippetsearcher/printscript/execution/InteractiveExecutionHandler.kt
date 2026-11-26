@@ -14,11 +14,13 @@ import snippetsearcher.printscript.common.InteractiveLimits
 import snippetsearcher.printscript.common.Limits
 import snippetsearcher.printscript.common.SourceError
 import snippetsearcher.printscript.common.VersionResolution
+import snippetsearcher.printscript.common.describe
 import snippetsearcher.printscript.common.resolveVersion
 import tools.jackson.core.JacksonException
 import tools.jackson.databind.JsonNode
 import tools.jackson.databind.json.JsonMapper
 import java.time.Duration
+import java.util.concurrent.ScheduledFuture
 import java.util.concurrent.atomic.AtomicInteger
 import java.util.concurrent.locks.ReentrantLock
 import kotlin.concurrent.withLock
@@ -31,6 +33,7 @@ class InteractiveExecutionHandler(
     private val interactiveLimits: InteractiveLimits,
     private val executions: InteractiveExecutionFactory,
     private val json: JsonMapper,
+    private val deadlines: StartDeadlines,
 ) : TextWebSocketHandler() {
     private val openSessions = AtomicInteger()
 
@@ -47,6 +50,14 @@ class InteractiveExecutionHandler(
                 "Se alcanzó el máximo de conexiones abiertas a la vez ($max). Probá de nuevo más tarde",
                 CloseStatus.SERVICE_OVERLOAD,
             )
+        } else {
+            // Sin plazo, una conexión que nunca manda el start ocuparía un lugar de max-sessions hasta que
+            // el cliente la cierre: con max-sessions conexiones mudas, nadie más podría ejecutar
+            val timeout = interactiveLimits.startTimeout
+            connection.startDeadline =
+                deadlines.schedule(timeout) {
+                    connection.rejectIfNotStarted("No llegó el 'start' en ${timeout.describe()}")
+                }
         }
     }
 
@@ -71,7 +82,9 @@ class InteractiveExecutionHandler(
         status: CloseStatus,
     ) {
         openSessions.decrementAndGet()
-        connection(session).execution?.cancel()
+        val connection = connection(session)
+        connection.startDeadline?.cancel(false)
+        connection.execution?.cancel()
     }
 
     private fun start(
@@ -87,9 +100,8 @@ class InteractiveExecutionHandler(
                 is VersionResolution.Unsupported -> connection.reject(resolution.message)
                 is VersionResolution.Supported -> {
                     val execution = executions.create(request.code, resolution.version, connection::emit)
-                    // Se guarda antes de arrancar: emit la usa para cancelar si un envío falla
-                    connection.execution = execution
-                    execution.start()
+                    // Si el plazo del start ya rechazó y cerró la conexión, no arranca
+                    if (connection.begin(execution)) execution.start()
                 }
             }
         }
@@ -143,6 +155,10 @@ class InteractiveExecutionHandler(
     ) {
         @Volatile
         var execution: InteractiveExecution? = null
+            private set
+
+        @Volatile
+        var startDeadline: ScheduledFuture<*>? = null
 
         // Los eventos salen del thread del snippet y los rejected del contenedor: el lock hace que no envíen a la vez
         // y que después de un cierre no salga nada más
@@ -163,15 +179,41 @@ class InteractiveExecutionHandler(
             }
         }
 
-        // Si la ejecución ya cerró la sesión, no hay a quién avisarle. Si el envío falla, la conexión ya no sirve.
-        @Suppress("TooGenericExceptionCaught", "SwallowedException")
+        /**
+         * Guarda la ejecución antes de arrancarla, y dice si se puede arrancar.
+         *
+         * Se guarda antes porque emit la usa para cancelar si un envío falla. Va bajo el mismo lock que
+         * `rejectIfNotStarted`: el plazo del start vence en otro thread, y sin el lock podría ver la
+         * ejecución en null, el start guardarla y arrancarla, y el plazo cerrar igual la conexión.
+         * Con el lock pasa una de dos: o el plazo rechazó primero y acá la sesión ya está cerrada, o
+         * esto guardó la ejecución primero y el plazo no hace nada.
+         */
+        fun begin(started: InteractiveExecution): Boolean =
+            sending.withLock {
+                if (!session.isOpen) return false
+                execution = started
+                startDeadline?.cancel(false)
+                true
+            }
+
         fun reject(
             detail: String,
             status: CloseStatus = CloseStatus.POLICY_VIOLATION,
+        ) = rejectIf(detail, status) { true }
+
+        // El chequeo va dentro del lock, junto con el rechazo: ver begin
+        fun rejectIfNotStarted(detail: String) = rejectIf(detail, CloseStatus.POLICY_VIOLATION) { execution == null }
+
+        // Si la ejecución ya cerró la sesión, no hay a quién avisarle. Si el envío falla, la conexión ya no sirve.
+        @Suppress("TooGenericExceptionCaught", "SwallowedException")
+        private fun rejectIf(
+            detail: String,
+            status: CloseStatus,
+            condition: () -> Boolean,
         ) {
             try {
                 sending.withLock {
-                    if (!session.isOpen) return
+                    if (!session.isOpen || !condition()) return
                     send(ServerMessage.Rejected(detail))
                     session.close(status)
                 }

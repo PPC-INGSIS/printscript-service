@@ -22,6 +22,13 @@ class InteractiveLimitsTest {
     }
 
     @Test
+    fun `rechaza un plazo de start que no sea positivo`() {
+        val error = assertFailsWith<IllegalArgumentException> { limits(startTimeout = Duration.ZERO) }
+
+        assertEquals("printscript.interactive.start-timeout tiene que ser mayor a 0, pero es 0 s", error.message)
+    }
+
+    @Test
     fun `rechaza un timeout de envío de menos de 1 ms`() {
         val error = assertFailsWith<IllegalArgumentException> { limits(sendTimeout = Duration.ofNanos(500_000)) }
 
@@ -43,6 +50,7 @@ class InteractiveLimitsTest {
         maxPendingInputs: Int = 1,
         maxMessageSize: DataSize = DataSize.ofKilobytes(1),
         sendTimeout: Duration = Duration.ofSeconds(1),
+        startTimeout: Duration = Duration.ofSeconds(1),
     ) = InteractiveLimits(
         inputTimeout,
         Duration.ofSeconds(1),
@@ -50,5 +58,6 @@ class InteractiveLimitsTest {
         maxPendingInputs,
         maxMessageSize,
         sendTimeout,
+        startTimeout,
     )
 }
