@@ -129,8 +129,8 @@ Acotan cuánto código procesa el servicio y cuánto producen y duran las ejecuc
 
 - **Los límites de `printscript.interactive` tienen que ser mayores a 0.** Si alguno no lo es, el servicio no arranca y el error nombra la property.
 - **El tamaño de `code` se chequea después de leer el body.** En `/execute`, `/format` y `/lint`, Jackson ya armó el `String` cuando llega el chequeo: el límite acota lo que se procesa, no lo que se recibe. `/validate` cuenta los bytes mientras lee el stream y corta apenas pasa el máximo.
-- **El timeout no libera la memoria del thread.** El intérprete no chequea interrupciones: después de responder, el thread de la ejecución puede seguir corriendo hasta terminar. Protege la latencia, no la memoria.
-- **Las ejecuciones vencidas siguen ocupando el pool.** `/execute` corre en el `applicationTaskExecutor` de Spring Boot: 8 threads y cola sin límite. Si 8 ejecuciones vencidas siguen corriendo a la vez, los pedidos nuevos esperan en la cola, y esa espera cuenta para su timeout. Sin loops y con 64 KB de código, solo puede tardar un snippet que crece exponencialmente, y ese se queda sin memoria en segundos, así que el pool se libera rápido.
+- **El timeout corta la ejecución en el próximo `println` o `readInput`.** Al vencer, el servicio responde con el error de tiempo límite e interrumpe el thread de la ejecución. Entre uno y otro no se puede frenar: el intérprete no chequea interrupciones, así que un cálculo sin `println` ni `readInput` sigue corriendo hasta terminar.
+- **Una ejecución vencida ocupa el pool hasta su próximo `println` o `readInput`.** `/execute` corre en el `applicationTaskExecutor` de Spring Boot: 8 threads y cola sin límite. Si 8 ejecuciones vencidas siguen corriendo a la vez sin llegar a uno, los pedidos nuevos esperan en la cola, y esa espera cuenta para su timeout. Sin loops y con 64 KB de código, solo puede tardar un snippet que crece exponencialmente, y ese se queda sin memoria en segundos, así que el pool se libera rápido.
 
 ## Autenticación
 
