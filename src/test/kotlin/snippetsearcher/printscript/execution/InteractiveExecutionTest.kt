@@ -5,6 +5,7 @@ import org.printscript.common.Version
 import org.springframework.util.unit.DataSize
 import snippetsearcher.printscript.common.InteractiveLimits
 import snippetsearcher.printscript.common.SourceError
+import snippetsearcher.printscript.common.deeplyNestedCode
 import snippetsearcher.printscript.execution.ExecutionEvent.Finished
 import snippetsearcher.printscript.execution.ExecutionEvent.InputRequested
 import snippetsearcher.printscript.execution.ExecutionEvent.Output
@@ -26,9 +27,6 @@ private val defaultMaxDuration = Duration.ofMinutes(1)
 // Lo bastante largo para no fallar en una máquina lenta: solo se espera entero si hay un bug
 private const val EVENT_TIMEOUT_SECONDS = 5L
 private const val QUIET_MILLIS = 200L
-
-// Con 5.000 niveles ya desborda; 20.000 deja margen por si la JVM corre con un stack más grande
-private const val DEEP_NESTING = 20_000
 
 class InteractiveExecutionTest {
     private val events = LinkedBlockingQueue<ExecutionEvent>()
@@ -160,9 +158,7 @@ class InteractiveExecutionTest {
 
     @Test
     fun `un código con demasiado anidamiento termina con el error de anidamiento`() {
-        val code = "println(${"(".repeat(DEEP_NESTING)}1${")".repeat(DEEP_NESTING)});"
-
-        execution(code).start()
+        execution(deeplyNestedCode).start()
 
         assertEquals(finished("El código tiene demasiados niveles de anidamiento"), next())
     }

@@ -100,6 +100,17 @@ Si el código supera el tamaño máximo (ver [Límites](#límites)), los cuatro 
 }
 ```
 
+Si el código tiene demasiados niveles de anidamiento, como miles de paréntesis uno dentro de otro, el parser de la librería desborda el stack. No es un error del pedido: `/validate`, `/execute` y `/lint` responden `200` con este error, igual que con cualquier otro error del código, y `/execute/interactive` termina con `finished` y el mismo error.
+
+```json
+{"message":"El código tiene demasiados niveles de anidamiento","line":null,"column":null}
+```
+
+- **Viene sin posición.** `line` y `column` llegan en `null`: el desborde corta el parser en cualquier punto, sin un error de la librería que diga dónde.
+- **No hay un número fijo de niveles.** Depende del tamaño del stack de la JVM, así que el mensaje no da un número.
+- **Dónde aparece:** en `/validate`, como único elemento de `errors`. En `/execute`, en `error`, con lo impreso hasta ahí en `outputs`. En `/lint`, en `error`, con las violaciones juntadas hasta ahí en `violations`.
+- **`/format` no se ve afectado.** El formateador trabaja sobre tokens, sin parsear, así que el código anidado se formatea igual.
+
 ## Límites
 
 Acotan cuánto código procesa el servicio y cuánto producen y duran las ejecuciones. Los números de los mensajes salen de estas properties.
@@ -170,6 +181,10 @@ Lista vacía = el código es válido. Cada error trae dónde empieza:
 
 `line` y `column` son **base 1**, tal como las da la librería: la primera letra del archivo es `1:1`.
 
+A tener en cuenta:
+
+- **Si el código tiene demasiados niveles de anidamiento, `errors` trae solo ese error, sin posición:** `El código tiene demasiados niveles de anidamiento`. Ver [Errores](#errores).
+
 ### `POST /execute`
 
 Ejecuta código con los inputs dados y devuelve lo que imprimió. Igual que `/validate`, recibe el contenido y no una ruta: leer el snippet del store es responsabilidad de Snippets. No compara contra valores esperados: eso también lo hace Snippets.
@@ -201,7 +216,7 @@ Si terminó bien, `error` es `null`:
 {"outputs":["Nombre: ","Hola Juan"],"error":null}
 ```
 
-Un error de sintaxis, uno de ejecución, la falta de inputs o pasarse de la salida o del tiempo límite **no** son errores del pedido: responden `200` con el error y lo impreso hasta ese momento.
+Un error de sintaxis, uno de ejecución, la falta de inputs, demasiado anidamiento o pasarse de la salida o del tiempo límite **no** son errores del pedido: responden `200` con el error y lo impreso hasta ese momento.
 
 ```json
 {"outputs":["antes"],"error":{"message":"...","line":2,"column":9}}
@@ -214,6 +229,7 @@ A tener en cuenta:
 - **Si faltan inputs, el error viene sin posición.** `line` y `column` llegan en `null`: la librería no le pasa la posición a quien da los inputs, y cuando el error llega al servicio ya no hay forma de saber en qué sentencia estaba. El mensaje dice cuántos se enviaron: `Faltan inputs: el snippet pidió más de los que se enviaron (se envió 1)`.
 - **Si la salida pasa el máximo, la ejecución se corta.** El error viene sin posición: `La salida superó el máximo de 1048576 caracteres`. `outputs` trae lo impreso hasta ahí, sin el texto que lo pasó. Los prompts de `readInput` también cuentan.
 - **Si la ejecución pasa el tiempo límite, se corta igual.** El error viene sin posición: `La ejecución superó el tiempo límite de 5 s`. `outputs` trae lo impreso hasta ese momento.
+- **Si el código tiene demasiados niveles de anidamiento, el error viene sin posición:** `El código tiene demasiados niveles de anidamiento`. `outputs` trae lo impreso hasta ahí. Ver [Errores](#errores).
 
 ### `WS /execute/interactive`
 
@@ -278,7 +294,7 @@ A tener en cuenta:
 
 - **Cerrar la conexión, del lado que sea, cancela la ejecución.**
 - **Un cliente que deja de leer corta la conexión.** Si un envío queda trabado más de `send-timeout`, se da por fallido y se cierra la sesión, sin `rejected` ni `finished`, lo que cancela la ejecución.
-- **Los errores de la ejecución no son rechazos.** Un error de sintaxis o de ejecución, pasarse de la salida, no recibir un input a tiempo o pasarse de la duración máxima terminan con `finished` y el error, igual que en `/execute`. Los de límites vienen sin posición: `No se recibió un input en 60 s`, `La ejecución superó la duración máxima de 600 s`.
+- **Los errores de la ejecución no son rechazos.** Un error de sintaxis o de ejecución, demasiado anidamiento, pasarse de la salida, no recibir un input a tiempo o pasarse de la duración máxima terminan con `finished` y el error, igual que en `/execute`. Los de límites vienen sin posición: `No se recibió un input en 60 s`, `La ejecución superó la duración máxima de 600 s`.
 - **Un mensaje de más de `max-message-size` cierra con `1009`, sin `rejected`.** Lo corta el servidor WebSocket antes de que llegue al servicio.
 - **El prompt de `readInput` sale como `output`**, antes del `input_request`. `readEnv` nunca lee las variables del servidor, como en `/execute`.
 - **La ejecución vive en memoria, en una sola réplica.** Un deploy o un reinicio corta las ejecuciones abiertas: la conexión se cierra y el usuario tiene que volver a ejecutar. No hay reconexión.
@@ -397,7 +413,7 @@ Los ids son los mismos `rule` que traen las violaciones.
 
 | Status | Cuándo | Body |
 |---|---|---|
-| `200` | Siempre que el pedido esté bien, haya o no violaciones | `{"violations":[...],"ignoredRules":[...]}` |
+| `200` | Siempre que el pedido esté bien, haya o no violaciones | `{"violations":[...],"error":...,"ignoredRules":[...]}` |
 | `400` | La versión no existe | Problem Details (ver [Errores](#errores)) |
 | `400` | Las reglas son inválidas | Problem Details con `rule` (ver abajo) |
 | `400` | Falta un campo del body | Problem Details de Spring |
@@ -406,7 +422,13 @@ Los ids son los mismos `rule` que traen las violaciones.
 Lista vacía = sin violaciones. Cada violación trae la regla, dónde empieza y su severidad. `ignoredRules` siempre viene, vacía si no se ignoró nada:
 
 ```json
-{"violations":[{"rule":"identifier-naming","message":"El identificador 'my_var' no sigue la convención de nombres configurada.","line":1,"column":5,"severity":"WARNING"}],"ignoredRules":[]}
+{"violations":[{"rule":"identifier-naming","message":"El identificador 'my_var' no sigue la convención de nombres configurada.","line":1,"column":5,"severity":"WARNING"}],"error":null,"ignoredRules":[]}
+```
+
+`error` es `null` salvo que el análisis se corte antes de terminar, y hoy eso solo pasa cuando el código tiene demasiados niveles de anidamiento (ver [Errores](#errores)). En ese caso `violations` trae las juntadas hasta ahí:
+
+```json
+{"violations":[...],"error":{"message":"El código tiene demasiados niveles de anidamiento","line":null,"column":null},"ignoredRules":[]}
 ```
 
 | `rule` | `severity` |
@@ -437,6 +459,7 @@ Las reglas inválidas traen en `rule` el id que falló:
 A tener en cuenta:
 
 - **Un error de sintaxis no corta el análisis.** Aparece en `violations` con `rule` `syntax`, y la librería sigue con la sentencia siguiente: las violaciones de las demás sentencias salen igual.
+- **Si el código tiene demasiados niveles de anidamiento, el análisis se corta.** `error` trae `El código tiene demasiados niveles de anidamiento`, sin posición, y `violations` las juntadas hasta ahí. Ver [Errores](#errores).
 
 ### `GET /versions`
 

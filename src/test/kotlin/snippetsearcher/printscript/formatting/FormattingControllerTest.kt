@@ -11,6 +11,7 @@ import org.springframework.test.json.JsonCompareMode
 import org.springframework.test.web.servlet.MockMvc
 import org.springframework.test.web.servlet.post
 import snippetsearcher.printscript.common.Limits
+import snippetsearcher.printscript.common.deeplyNestedCode
 import tools.jackson.databind.json.JsonMapper
 
 private const val MAX_CODE_SIZE = 64 * 1024
@@ -57,6 +58,16 @@ class FormattingControllerTest(
             jsonPath("$.error.message") { isNotEmpty() }
             jsonPath("$.error.line") { value(2) }
             jsonPath("$.error.column") { value(19) }
+        }
+    }
+
+    @Test
+    fun `un código con mucho anidamiento responde 200 con el código formateado`() {
+        withCode(deeplyNestedCode).andExpect {
+            status { isOk() }
+            content {
+                json("""{"formatted":"$deeplyNestedCode","error":null,"ignoredRules":[]}""", JsonCompareMode.STRICT)
+            }
         }
     }
 
