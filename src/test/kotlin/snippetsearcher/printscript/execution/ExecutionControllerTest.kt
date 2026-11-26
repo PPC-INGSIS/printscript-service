@@ -11,6 +11,7 @@ import org.springframework.test.json.JsonCompareMode
 import org.springframework.test.web.servlet.MockMvc
 import org.springframework.test.web.servlet.post
 import snippetsearcher.printscript.common.Limits
+import snippetsearcher.printscript.common.deeplyNestedCode
 import tools.jackson.databind.json.JsonMapper
 
 private const val MAX_CODE_SIZE = 64 * 1024
@@ -74,6 +75,28 @@ class ExecutionControllerTest(
             jsonPath("$.outputs[0]") { value("antes") }
             jsonPath("$.error.line") { value(2) }
             jsonPath("$.error.column") { value(9) }
+        }
+    }
+
+    @Test
+    fun `un código con demasiado anidamiento responde 200 con el error sin posición y lo impreso hasta ahí`() {
+        withCode("println(\"antes\");\n$deeplyNestedCode").andExpect {
+            status { isOk() }
+            content {
+                json(
+                    """
+                    {
+                      "outputs": ["antes"],
+                      "error": {
+                        "message": "El código tiene demasiados niveles de anidamiento",
+                        "line": null,
+                        "column": null
+                      }
+                    }
+                    """,
+                    JsonCompareMode.STRICT,
+                )
+            }
         }
     }
 
