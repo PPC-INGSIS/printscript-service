@@ -2,6 +2,8 @@ package snippetsearcher.printscript.execution
 
 import org.junit.jupiter.api.Test
 import org.printscript.common.Version
+import org.springframework.util.unit.DataSize
+import snippetsearcher.printscript.common.InteractiveLimits
 import snippetsearcher.printscript.common.SourceError
 import snippetsearcher.printscript.execution.ExecutionEvent.Finished
 import snippetsearcher.printscript.execution.ExecutionEvent.InputRequested
@@ -10,7 +12,6 @@ import java.time.Duration
 import java.util.concurrent.LinkedBlockingQueue
 import java.util.concurrent.TimeUnit
 import kotlin.test.assertEquals
-import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
 import kotlin.test.assertIs
 import kotlin.test.assertNotNull
@@ -20,6 +21,7 @@ import kotlin.test.assertTrue
 private const val MAX_OUTPUT = 1_000_000L
 private const val MAX_PENDING_INPUTS = 10
 private val defaultInputTimeout = Duration.ofSeconds(5)
+private val defaultMaxDuration = Duration.ofMinutes(1)
 
 // Lo bastante largo para no fallar en una máquina lenta: solo se espera entero si hay un bug
 private const val EVENT_TIMEOUT_SECONDS = 5L
@@ -90,6 +92,15 @@ class InteractiveExecutionTest {
     }
 
     @Test
+    fun `si pasa la duración máxima mientras espera un input termina con el error de duración`() {
+        start("20-read-input.ps", maxDuration = Duration.ofMillis(50))
+
+        assertEquals(Output("Nombre: "), next())
+        assertEquals(InputRequested, next())
+        assertEquals(finished("La ejecución superó la duración máxima de 50 ms"), next())
+    }
+
+    @Test
     fun `los inputs que llegan antes de que el snippet los pida quedan encolados`() {
         val execution = execution(snippet("20-read-input.ps"))
         assertTrue(execution.provideInput("Juan"))
@@ -156,30 +167,27 @@ class InteractiveExecutionTest {
         assertEquals(finished("El código tiene demasiados niveles de anidamiento"), next())
     }
 
-    @Test
-    fun `rechaza un máximo de inputs pendientes que no sea positivo`() {
-        val error =
-            assertFailsWith<IllegalArgumentException> {
-                InteractiveIo(MAX_OUTPUT, defaultInputTimeout, maxPendingInputs = 0, emit = events::put)
-            }
-
-        assertEquals("maxPendingInputs tiene que ser mayor a 0, pero es 0", error.message)
-    }
-
     private fun start(
         name: String,
         version: Version = Version.V11,
         maxOutputSize: Long = MAX_OUTPUT,
         inputTimeout: Duration = defaultInputTimeout,
-    ) = execution(snippet(name), version, maxOutputSize, inputTimeout).also { it.start() }
+        maxDuration: Duration = defaultMaxDuration,
+    ) = execution(snippet(name), version, maxOutputSize, limits(inputTimeout, maxDuration)).also { it.start() }
 
     private fun execution(
         code: String,
         version: Version = Version.V11,
         maxOutputSize: Long = MAX_OUTPUT,
-        inputTimeout: Duration = defaultInputTimeout,
+        limits: InteractiveLimits = limits(),
         emit: (ExecutionEvent) -> Unit = events::put,
-    ) = InteractiveExecution(code, version, maxOutputSize, inputTimeout, MAX_PENDING_INPUTS, emit)
+    ) = InteractiveExecution(code, version, maxOutputSize, limits, emit)
+
+    // max-sessions y max-message-size son del transporte: el núcleo no los usa
+    private fun limits(
+        inputTimeout: Duration = defaultInputTimeout,
+        maxDuration: Duration = defaultMaxDuration,
+    ) = InteractiveLimits(inputTimeout, maxDuration, maxSessions = 1, MAX_PENDING_INPUTS, DataSize.ofKilobytes(1))
 
     private fun next(): ExecutionEvent =
         assertNotNull(events.poll(EVENT_TIMEOUT_SECONDS, TimeUnit.SECONDS), "No llegó el evento esperado")

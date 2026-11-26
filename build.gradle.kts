@@ -25,6 +25,7 @@ val newRelicAgent = configurations.create("newRelicAgent")
 
 dependencies {
     implementation("printscript:runner:1.1.1")
+    implementation("org.springframework.boot:spring-boot-starter-websocket")
     newRelicAgent("com.newrelic.agent.java:newrelic-agent:9.5.0")
 }
 

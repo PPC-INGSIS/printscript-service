@@ -1,40 +1,51 @@
 package snippetsearcher.printscript.execution
 
 import org.printscript.interpreter.io.PrintScriptIO
-import java.time.Duration
+import snippetsearcher.printscript.common.InteractiveLimits
 import java.util.concurrent.ArrayBlockingQueue
 import java.util.concurrent.TimeUnit
 
 // Una instancia por ejecución. print y read corren en el thread del snippet; provideInput llega desde otro.
 class InteractiveIo(
     maxOutputSize: Long,
-    private val inputTimeout: Duration,
-    maxPendingInputs: Int,
+    private val limits: InteractiveLimits,
     private val emit: (ExecutionEvent) -> Unit,
 ) : PrintScriptIO {
-    init {
-        require(maxPendingInputs > 0) { "maxPendingInputs tiene que ser mayor a 0, pero es $maxPendingInputs" }
-    }
-
     private val budget = OutputBudget(maxOutputSize)
-    private val inputs = ArrayBlockingQueue<String>(maxPendingInputs)
+    private val inputs = ArrayBlockingQueue<String>(limits.maxPendingInputs)
+
+    // Lo escribe y lo lee solo el thread del snippet
+    private var deadline = 0L
+
+    // Se llama al arrancar la ejecución, no al crearla: los inputs pueden encolarse antes
+    fun startClock() {
+        deadline = System.nanoTime() + limits.maxDuration.toNanos()
+    }
 
     override fun print(message: String) {
         // El intérprete no chequea interrupciones: un snippet que solo imprime se corta acá
         if (Thread.interrupted()) throw ExecutionCancelled()
+        if (remainingNanos() <= 0) throw MaxDurationExceededException(limits.maxDuration)
         budget.spend(message)
         emit(ExecutionEvent.Output(message))
     }
 
     override fun read(prompt: String): String {
         emit(ExecutionEvent.InputRequested)
+        val remaining = remainingNanos()
+        val inputTimeout = limits.inputTimeout.toNanos()
         val input =
             try {
-                inputs.poll(inputTimeout.toNanos(), TimeUnit.NANOSECONDS)
+                inputs.poll(minOf(inputTimeout, remaining), TimeUnit.NANOSECONDS)
             } catch (expected: InterruptedException) {
                 throw ExecutionCancelled()
             }
-        return input ?: throw InputTimeoutException(inputTimeout)
+        if (input != null) return input
+        throw if (inputTimeout <= remaining) {
+            InputTimeoutException(limits.inputTimeout)
+        } else {
+            MaxDurationExceededException(limits.maxDuration)
+        }
     }
 
     // Nunca se exponen las variables del servidor. La librería trata null como variable no definida.
@@ -42,4 +53,6 @@ class InteractiveIo(
 
     // Con tope: un cliente que manda inputs sin que se los pidan no llena la memoria
     fun provideInput(value: String): Boolean = inputs.offer(value)
+
+    private fun remainingNanos() = deadline - System.nanoTime()
 }
