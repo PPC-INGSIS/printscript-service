@@ -1,13 +1,15 @@
 package snippetsearcher.printscript.execution
 
+import com.fasterxml.jackson.annotation.JsonTypeInfo
+import com.fasterxml.jackson.annotation.JsonTypeName
 import org.springframework.stereotype.Component
 import org.springframework.web.socket.CloseStatus
 import org.springframework.web.socket.TextMessage
 import org.springframework.web.socket.WebSocketSession
-import org.springframework.web.socket.handler.ConcurrentWebSocketSessionDecorator
 import org.springframework.web.socket.handler.TextWebSocketHandler
 import snippetsearcher.printscript.common.InteractiveLimits
 import snippetsearcher.printscript.common.Limits
+import snippetsearcher.printscript.common.SourceError
 import snippetsearcher.printscript.common.VersionResolution
 import snippetsearcher.printscript.common.resolveVersion
 import tools.jackson.core.JacksonException
@@ -18,10 +20,6 @@ import java.util.concurrent.locks.ReentrantLock
 import kotlin.concurrent.withLock
 
 private const val CONNECTION = "connection"
-
-// Un envío trabado o un cliente que no lee cortan la sesión en vez de frenar al snippet o llenar la memoria
-private const val SEND_TIME_LIMIT_MILLIS = 10_000
-private const val BUFFER_SIZE_LIMIT_BYTES = 1024 * 1024
 
 @Component
 class InteractiveExecutionHandler(
@@ -35,8 +33,7 @@ class InteractiveExecutionHandler(
     override fun afterConnectionEstablished(session: WebSocketSession) {
         // Se cuenta antes que nada: afterConnectionClosed descuenta siempre, también a las rechazadas
         val open = openSessions.incrementAndGet()
-        val connection =
-            Connection(ConcurrentWebSocketSessionDecorator(session, SEND_TIME_LIMIT_MILLIS, BUFFER_SIZE_LIMIT_BYTES))
+        val connection = Connection(session)
         session.attributes[CONNECTION] = connection
         session.textMessageSizeLimit = interactiveLimits.maxMessageSize.toBytes().toInt()
         val max = interactiveLimits.maxSessions
@@ -136,15 +133,14 @@ class InteractiveExecutionHandler(
 
     private fun connection(session: WebSocketSession) = session.attributes[CONNECTION] as Connection
 
-    // Los eventos salen del thread del snippet y los rejected del contenedor: el decorator ordena los envíos
     private inner class Connection(
         private val session: WebSocketSession,
     ) {
         @Volatile
         var execution: InteractiveExecution? = null
 
-        // El decorator descarta al cerrar lo que quedó en su buffer: sin el lock, un rejected que llega
-        // mientras el snippet envía se perdería. Con él, reject espera ese envío y después no sale nada más.
+        // Los eventos salen del thread del snippet y los rejected del contenedor: el lock hace que no envíen a la vez
+        // y que después de un cierre no salga nada más
         private val sending = ReentrantLock()
 
         // Nunca lanza: si lanzara, el núcleo loguearía cada desconexión como un error inesperado.
@@ -162,18 +158,24 @@ class InteractiveExecutionHandler(
             }
         }
 
+        // Si la ejecución ya cerró la sesión, no hay a quién avisarle. Si el envío falla, la conexión ya no sirve.
+        @Suppress("TooGenericExceptionCaught", "SwallowedException")
         fun reject(
             detail: String,
             status: CloseStatus = CloseStatus.POLICY_VIOLATION,
-        ) = sending.withLock {
-            send(mapOf("type" to "rejected", "detail" to detail))
-            session.close(status)
+        ) {
+            try {
+                sending.withLock {
+                    if (!session.isOpen) return
+                    send(ServerMessage.Rejected(detail))
+                    session.close(status)
+                }
+            } catch (failed: Exception) {
+                execution?.cancel()
+            }
         }
 
-        private fun send(message: Map<String, Any?>) =
-            session.sendMessage(
-                TextMessage(json.writeValueAsString(message)),
-            )
+        private fun send(message: ServerMessage) = session.sendMessage(TextMessage(json.writeValueAsString(message)))
     }
 }
 
@@ -192,9 +194,30 @@ private sealed interface ClientMessage {
     ) : ClientMessage
 }
 
-private fun ExecutionEvent.toMessage(): Map<String, Any?> =
+@JsonTypeInfo(use = JsonTypeInfo.Id.NAME, property = "type")
+private sealed interface ServerMessage {
+    @JsonTypeName("output")
+    data class Output(
+        val text: String,
+    ) : ServerMessage
+
+    @JsonTypeName("input_request")
+    data object InputRequest : ServerMessage
+
+    @JsonTypeName("finished")
+    data class Finished(
+        val error: SourceError?,
+    ) : ServerMessage
+
+    @JsonTypeName("rejected")
+    data class Rejected(
+        val detail: String,
+    ) : ServerMessage
+}
+
+private fun ExecutionEvent.toMessage(): ServerMessage =
     when (this) {
-        is ExecutionEvent.Output -> mapOf("type" to "output", "text" to text)
-        ExecutionEvent.InputRequested -> mapOf("type" to "input_request")
-        is ExecutionEvent.Finished -> mapOf("type" to "finished", "error" to error)
+        is ExecutionEvent.Output -> ServerMessage.Output(text)
+        ExecutionEvent.InputRequested -> ServerMessage.InputRequest
+        is ExecutionEvent.Finished -> ServerMessage.Finished(error)
     }
