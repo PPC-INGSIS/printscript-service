@@ -2,10 +2,13 @@ package snippetsearcher.printscript.execution
 
 import com.fasterxml.jackson.annotation.JsonTypeInfo
 import com.fasterxml.jackson.annotation.JsonTypeName
+import jakarta.websocket.Session
+import org.apache.tomcat.websocket.Constants
 import org.springframework.stereotype.Component
 import org.springframework.web.socket.CloseStatus
 import org.springframework.web.socket.TextMessage
 import org.springframework.web.socket.WebSocketSession
+import org.springframework.web.socket.adapter.NativeWebSocketSession
 import org.springframework.web.socket.handler.TextWebSocketHandler
 import snippetsearcher.printscript.common.InteractiveLimits
 import snippetsearcher.printscript.common.Limits
@@ -15,6 +18,7 @@ import snippetsearcher.printscript.common.resolveVersion
 import tools.jackson.core.JacksonException
 import tools.jackson.databind.JsonNode
 import tools.jackson.databind.json.JsonMapper
+import java.time.Duration
 import java.util.concurrent.atomic.AtomicInteger
 import java.util.concurrent.locks.ReentrantLock
 import kotlin.concurrent.withLock
@@ -36,6 +40,7 @@ class InteractiveExecutionHandler(
         val connection = Connection(session)
         session.attributes[CONNECTION] = connection
         session.textMessageSizeLimit = interactiveLimits.maxMessageSize.toBytes().toInt()
+        session.applySendTimeout(interactiveLimits.sendTimeout)
         val max = interactiveLimits.maxSessions
         if (open > max) {
             connection.reject(
@@ -213,6 +218,12 @@ private sealed interface ServerMessage {
     data class Rejected(
         val detail: String,
     ) : ServerMessage
+}
+
+// Tomcat lee el timeout de cada envío de las propiedades de la sesión, y solo si es un Long: si no, usa 20 s
+private fun WebSocketSession.applySendTimeout(timeout: Duration) {
+    val native = (this as NativeWebSocketSession).nativeSession as Session
+    native.userProperties[Constants.BLOCKING_SEND_TIMEOUT_PROPERTY] = timeout.toMillis()
 }
 
 private fun ExecutionEvent.toMessage(): ServerMessage =

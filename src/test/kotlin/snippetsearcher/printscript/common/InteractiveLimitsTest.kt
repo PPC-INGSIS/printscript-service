@@ -22,6 +22,13 @@ class InteractiveLimitsTest {
     }
 
     @Test
+    fun `rechaza un timeout de envío de menos de 1 ms`() {
+        val error = assertFailsWith<IllegalArgumentException> { limits(sendTimeout = Duration.ofNanos(500_000)) }
+
+        assertEquals("printscript.interactive.send-timeout tiene que ser de al menos 1 ms, pero es 0 ms", error.message)
+    }
+
+    @Test
     fun `rechaza un tamaño de mensaje que no entra en un Int`() {
         val error = assertFailsWith<IllegalArgumentException> { limits(maxMessageSize = DataSize.ofGigabytes(2)) }
 
@@ -35,5 +42,13 @@ class InteractiveLimitsTest {
         inputTimeout: Duration = Duration.ofSeconds(1),
         maxPendingInputs: Int = 1,
         maxMessageSize: DataSize = DataSize.ofKilobytes(1),
-    ) = InteractiveLimits(inputTimeout, Duration.ofSeconds(1), maxSessions = 1, maxPendingInputs, maxMessageSize)
+        sendTimeout: Duration = Duration.ofSeconds(1),
+    ) = InteractiveLimits(
+        inputTimeout,
+        Duration.ofSeconds(1),
+        maxSessions = 1,
+        maxPendingInputs,
+        maxMessageSize,
+        sendTimeout,
+    )
 }
