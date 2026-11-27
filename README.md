@@ -143,7 +143,7 @@ Todos los endpoints, salvo `/actuator/health`, exigen un token de Auth0 con el s
 | Con un token válido sin `read:snippets` | `403` |
 | Con un token válido con `read:snippets` | Lo que corresponda al endpoint |
 
-Es `read:snippets` en los cuatro porque PrintScript no guarda ni modifica nada: procesa el código que recibe. La escritura la chequea Snippets con `write:snippets`.
+Es `read:snippets` en todos porque PrintScript no guarda ni modifica nada: procesa lo que recibe. La escritura la chequea Snippets con `write:snippets`.
 
 Snippets reenvía el token del usuario en cada llamada. Para probar a mano, sacá un token como se explica en el README de snippet-service y agregá `-H "Authorization: Bearer $TOKEN"` a los `curl` de abajo.
 
@@ -534,6 +534,44 @@ curl "localhost:8082/rules/format?version=1.1"
 | Flag | `{"type":"boolean","const":true}`. Sin `default` |
 
 - **`default` es el valor que se propone al activar la regla, no uno que se aplique solo.** Una regla que no se manda a `/format` o `/lint` no se aplica.
+
+### `POST /rules/format/validate` y `POST /rules/lint/validate`
+
+Validan reglas de formato y de lint sin mandar código: que cada id exista y que su valor sea del tipo y del rango correctos. Snippets los usa antes de guardar las reglas de un usuario. Validan con lo mismo que `/format` y `/lint`, así que un error da la misma respuesta que en esos endpoints.
+
+```bash
+curl -X POST localhost:8082/rules/format/validate \
+  -H "Content-Type: application/json" \
+  -d '{"rules":{"if-indent":4,"space-before-colon":"never"}}'
+```
+
+| Campo | |
+|---|---|
+| `rules` | Las reglas, por id, con el mismo formato que en `/format` y `/lint`. `{}` es válido |
+
+**Respuestas**
+
+| Status | Cuándo | Body |
+|---|---|---|
+| `204` | Todas las reglas son válidas | Sin body |
+| `400` | Una regla es inválida | Problem Details con `rule` (ver abajo) |
+| `400` | Falta `rules` en el body | Problem Details de Spring |
+
+La regla inválida viene en `rule`, con el mismo `detail` que en `/format` y `/lint` (ver los mensajes en esas secciones):
+
+```json
+{
+  "title": "Bad Request",
+  "status": 400,
+  "detail": "Regla de lint desconocida: 'no-existe'",
+  "instance": "/rules/lint/validate",
+  "rule": "no-existe"
+}
+```
+
+- **No reciben versión.** Que una regla sea válida no depende de la versión, así que valen todas las reglas, también las de `1.1`. `if-indent` es válida aunque el snippet sea `1.0`: ahí `/format` no la aplica y la devuelve en `ignoredRules`.
+- **Solo informan la primera regla inválida**, como `/format` y `/lint`. Si hay más de una, después de corregirla aparece la siguiente.
+- **Un flag en `false` es válido:** equivale a no mandarlo.
 
 ## Credenciales de GitHub Packages
 

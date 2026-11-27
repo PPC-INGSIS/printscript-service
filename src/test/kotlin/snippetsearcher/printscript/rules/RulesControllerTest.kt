@@ -8,6 +8,7 @@ import org.springframework.http.MediaType
 import org.springframework.test.json.JsonCompareMode
 import org.springframework.test.web.servlet.MockMvc
 import org.springframework.test.web.servlet.get
+import org.springframework.test.web.servlet.post
 
 @WebMvcTest(RulesController::class)
 // Sin los filtros de seguridad: este test prueba el controller. La seguridad está en SecurityConfigurationTest
@@ -102,5 +103,129 @@ class RulesControllerTest(
                 jsonPath("$.detail") { value("La versión '2.0' no existe. Versiones disponibles: 1.0, 1.1") }
             }
         }
+    }
+
+    @Test
+    fun `reglas de formato válidas responden 204 sin body`() {
+        validate("/rules/format/validate", """{"rules":{"space-before-colon":"never","blank-lines-after-println":2}}""")
+            .andExpect {
+                status { isNoContent() }
+                content { string("") }
+            }
+    }
+
+    @Test
+    fun `sin reglas de formato responde 204`() {
+        validate("/rules/format/validate", """{"rules":{}}""").andExpect { status { isNoContent() } }
+    }
+
+    @Test
+    fun `una regla de formato desconocida responde 400 con el motivo y la regla`() {
+        validate("/rules/format/validate", """{"rules":{"no-existe":true}}""").andExpect {
+            status { isBadRequest() }
+            content { contentType(MediaType.APPLICATION_PROBLEM_JSON) }
+            jsonPath("$.detail") { value("Regla de formato desconocida: 'no-existe'") }
+            jsonPath("$.rule") { value("no-existe") }
+        }
+    }
+
+    @Test
+    fun `una opción de formato que no existe responde 400 con la regla`() {
+        validate("/rules/format/validate", """{"rules":{"space-before-colon":"a-veces"}}""").andExpect {
+            status { isBadRequest() }
+            jsonPath("$.detail") { value("La regla 'space-before-colon' tiene que ser 'always' o 'never'") }
+            jsonPath("$.rule") { value("space-before-colon") }
+        }
+    }
+
+    @Test
+    fun `un entero de formato fuera de rango responde 400 con la regla`() {
+        validate("/rules/format/validate", """{"rules":{"if-indent":12}}""").andExpect {
+            status { isBadRequest() }
+            jsonPath("$.detail") { value("La regla 'if-indent' acepta valores entre 0 y 8, se recibió 12") }
+            jsonPath("$.rule") { value("if-indent") }
+        }
+    }
+
+    @Test
+    fun `un flag de formato en false responde 204`() {
+        validate("/rules/format/validate", """{"rules":{"line-break-after-statement":false}}""")
+            .andExpect { status { isNoContent() } }
+    }
+
+    @Test
+    fun `una regla de formato de la 1_1 responde 204 sin mandar versión`() {
+        validate("/rules/format/validate", """{"rules":{"if-indent":4}}""").andExpect { status { isNoContent() } }
+    }
+
+    @Test
+    fun `validar formato sin rules en el body responde 400`() {
+        validate("/rules/format/validate", "{}").andExpect {
+            status { isBadRequest() }
+            content { contentType(MediaType.APPLICATION_PROBLEM_JSON) }
+            jsonPath("$.rule") { doesNotExist() }
+        }
+    }
+
+    @Test
+    fun `reglas de lint válidas responden 204 sin body`() {
+        validate("/rules/lint/validate", """{"rules":{"identifier-naming":"snake-case","println-argument":true}}""")
+            .andExpect {
+                status { isNoContent() }
+                content { string("") }
+            }
+    }
+
+    @Test
+    fun `sin reglas de lint responde 204`() {
+        validate("/rules/lint/validate", """{"rules":{}}""").andExpect { status { isNoContent() } }
+    }
+
+    @Test
+    fun `una regla de lint desconocida responde 400 con el motivo y la regla`() {
+        validate("/rules/lint/validate", """{"rules":{"no-existe":true}}""").andExpect {
+            status { isBadRequest() }
+            content { contentType(MediaType.APPLICATION_PROBLEM_JSON) }
+            jsonPath("$.detail") { value("Regla de lint desconocida: 'no-existe'") }
+            jsonPath("$.rule") { value("no-existe") }
+        }
+    }
+
+    @Test
+    fun `una opción de lint que no existe responde 400 con la regla`() {
+        validate("/rules/lint/validate", """{"rules":{"identifier-naming":"kebab-case"}}""").andExpect {
+            status { isBadRequest() }
+            jsonPath("$.detail") { value("La regla 'identifier-naming' tiene que ser 'camel-case' o 'snake-case'") }
+            jsonPath("$.rule") { value("identifier-naming") }
+        }
+    }
+
+    @Test
+    fun `un flag de lint en false responde 204`() {
+        validate("/rules/lint/validate", """{"rules":{"println-argument":false}}""")
+            .andExpect { status { isNoContent() } }
+    }
+
+    @Test
+    fun `una regla de lint de la 1_1 responde 204 sin mandar versión`() {
+        validate("/rules/lint/validate", """{"rules":{"read-input-argument":true}}""")
+            .andExpect { status { isNoContent() } }
+    }
+
+    @Test
+    fun `validar lint sin rules en el body responde 400`() {
+        validate("/rules/lint/validate", "{}").andExpect {
+            status { isBadRequest() }
+            content { contentType(MediaType.APPLICATION_PROBLEM_JSON) }
+            jsonPath("$.rule") { doesNotExist() }
+        }
+    }
+
+    private fun validate(
+        path: String,
+        body: String,
+    ) = mockMvc.post(path) {
+        contentType = MediaType.APPLICATION_JSON
+        content = body
     }
 }
